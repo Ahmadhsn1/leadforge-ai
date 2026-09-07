@@ -7,14 +7,14 @@ Redis. Everything is a container; nothing writes to local disk.
 
 ## 1. Provision
 
-| Component | Requirement | Notes |
-| --- | --- | --- |
-| PostgreSQL | 16+, 2 vCPU / 4 GB to start | Automated daily backups with a **tested** restore. Untested backups are not backups. |
-| Redis | 7+, 1 GB | Must be `maxmemory-policy noeviction`. Evicting a key silently loses queued jobs. |
-| `api` | 1 vCPU / 1 GB, ≥2 replicas | Stateless behind a load balancer. |
-| `worker` | 1 vCPU / 2 GB, 1–4 replicas | Scale on queue depth. |
-| `web` | 0.5 vCPU / 512 MB, ≥2 replicas | |
-| Secret manager | — | Environment variables are secrets, not config. |
+| Component      | Requirement                    | Notes                                                                                |
+| -------------- | ------------------------------ | ------------------------------------------------------------------------------------ |
+| PostgreSQL     | 16+, 2 vCPU / 4 GB to start    | Automated daily backups with a **tested** restore. Untested backups are not backups. |
+| Redis          | 7+, 1 GB                       | Must be `maxmemory-policy noeviction`. Evicting a key silently loses queued jobs.    |
+| `api`          | 1 vCPU / 1 GB, ≥2 replicas     | Stateless behind a load balancer.                                                    |
+| `worker`       | 1 vCPU / 2 GB, 1–4 replicas    | Scale on queue depth.                                                                |
+| `web`          | 0.5 vCPU / 512 MB, ≥2 replicas |                                                                                      |
+| Secret manager | —                              | Environment variables are secrets, not config.                                       |
 
 The services need no shared filesystem and no sticky sessions: the session lives
 in the database, so any replica can serve any request.
@@ -94,12 +94,12 @@ payload shape it does not understand instead of misreading it.
 
 ## 4. Health and probes
 
-| Endpoint | Purpose | Auth |
-| --- | --- | --- |
-| `GET /health` | Liveness. Cheap; answers even when the database is struggling. | public |
-| `GET /health/ready` | Readiness. Fails when Postgres or Redis is unreachable. | public |
-| `GET /health/detail` | Full status incl. queue depth and provider configuration. | session |
-| `GET :4001/health` (worker) | Worker liveness. | public |
+| Endpoint                    | Purpose                                                        | Auth    |
+| --------------------------- | -------------------------------------------------------------- | ------- |
+| `GET /health`               | Liveness. Cheap; answers even when the database is struggling. | public  |
+| `GET /health/ready`         | Readiness. Fails when Postgres or Redis is unreachable.        | public  |
+| `GET /health/detail`        | Full status incl. queue depth and provider configuration.      | session |
+| `GET :4001/health` (worker) | Worker liveness.                                               | public  |
 
 Use `/health` for liveness and `/health/ready` for readiness. Pointing liveness
 at `/health/ready` would restart a healthy pod during a brief database blip.

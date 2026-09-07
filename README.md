@@ -71,13 +71,13 @@ LeadForge does not simulate integrations. An unconfigured provider reports that
 plainly; it never returns invented data. Everything except the two marked
 **required for full function** degrades gracefully.
 
-| Provider | Environment variables | Without it |
-| --- | --- | --- |
-| **OpenRouter** — AI gateway | `OPENROUTER_API_KEY` | Analysis, score explanations, message generation and the copilot return "not configured". Verification, enrichment and deterministic scoring still work. |
-| **Google Places** — discovery | `GOOGLE_MAPS_API_KEY` | Campaigns cannot discover businesses. CSV import still works and runs the full pipeline. |
-| WhatsApp Business | `META_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` | Drafts can be written and reviewed but not sent. |
-| Instagram | `META_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID` | As above. Note that Instagram does not permit cold-starting a conversation — see below. |
-| Email (SMTP) | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Email outreach cannot send; verification and reset emails are logged instead. |
+| Provider                      | Environment variables                                                                           | Without it                                                                                                                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OpenRouter** — AI gateway   | `OPENROUTER_API_KEY`                                                                            | Analysis, score explanations, message generation and the copilot return "not configured". Verification, enrichment and deterministic scoring still work. |
+| **Google Places** — discovery | `GOOGLE_MAPS_API_KEY`                                                                           | Campaigns cannot discover businesses. CSV import still works and runs the full pipeline.                                                                 |
+| WhatsApp Business             | `META_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` | Drafts can be written and reviewed but not sent.                                                                                                         |
+| Instagram                     | `META_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`                                            | As above. Note that Instagram does not permit cold-starting a conversation — see below.                                                                  |
+| Email (SMTP)                  | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`                                          | Email outreach cannot send; verification and reset emails are logged instead.                                                                            |
 
 Where to get each key is linked in **Settings → Integrations** inside the app.
 
@@ -167,13 +167,13 @@ pnpm stack:up         # the whole stack in containers
 
 ## Testing
 
-| Layer | What it covers | Count |
-| --- | --- | --- |
-| `packages/shared` | Phone/URL normalisation, dedupe matching, similarity | 41 |
-| `packages/ai` | Model routing, fallback, schema validation, usage accounting | 25 |
-| `apps/api` (unit) | Message validation — every prohibited-claim rule | 17 |
-| `apps/api` (e2e) | Full pipeline against real Postgres: dedupe, verification, scoring, suppression, tenancy | 14 |
-| `scripts/smoke-test.mjs` | Live HTTP surface: auth, contracts, guards, tenant isolation | 69 |
+| Layer                    | What it covers                                                                           | Count |
+| ------------------------ | ---------------------------------------------------------------------------------------- | ----- |
+| `packages/shared`        | Phone/URL normalisation, dedupe matching, similarity                                     | 41    |
+| `packages/ai`            | Model routing, fallback, schema validation, usage accounting                             | 25    |
+| `apps/api` (unit)        | Message validation — every prohibited-claim rule                                         | 17    |
+| `apps/api` (e2e)         | Full pipeline against real Postgres: dedupe, verification, scoring, suppression, tenancy | 14    |
+| `scripts/smoke-test.mjs` | Live HTTP surface: auth, contracts, guards, tenant isolation                             | 69    |
 
 Tenant isolation is tested explicitly on every read and write path, per the
 definition of done in `docs/38`.
@@ -199,6 +199,11 @@ definition of done in `docs/38`.
 `docs/` is the source of truth for product and engineering decisions and is
 numbered in reading order. Per `docs/39`, an architecture change updates the
 relevant document before the implementation continues.
+
+`docs/43-IMPLEMENTATION-NOTES.md` records what was built, where the
+implementation departs from the original design and why, and what platform
+limits turned out to constrain the product (Instagram cannot cold-start a
+conversation; WhatsApp free-form messages need an open 24-hour window).
 
 ---
 
