@@ -1,0 +1,21 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+allowBuilds:
+  esbuild: set this to true or false
+
+onlyBuiltDependencies:
+  - esbuild
+  - prisma
+  - '@prisma/client'
+  - '@prisma/engines'
+  - '@nestjs/core'
+  - '@tailwindcss/oxide'
+  - argon2
+  - sharp
+  - unrs-resolver
+  - msgpackr-extract
+  - '@swc/core'
+
+dangerouslyAllowAllBuilds: true
