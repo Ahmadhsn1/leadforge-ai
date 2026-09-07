@@ -1,0 +1,351 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * LeadForge design tokens.
+ *
+ * Dark is the primary theme: deep neutral surfaces with a slight blue cast,
+ * hairline borders, and a single blue/cyan accent reserved for AI and primary
+ * actions. Light mode is a first-class sibling, not an inversion — surfaces
+ * and states are defined independently and both are contrast-checked.
+ */
+
+@layer base {
+  :root {
+    /* Light */
+    --background: 220 20% 98%;
+    --surface: 0 0% 100%;
+    --raised: 0 0% 100%;
+    --overlay: 0 0% 100%;
+    --foreground: 222 34% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 34% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 34% 11%;
+
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 9% 42%;
+    --subtle: 220 18% 96%;
+    --subtle-foreground: 220 10% 34%;
+
+    --border: 220 15% 89%;
+    --border-strong: 220 14% 80%;
+    --input: 220 15% 89%;
+    --ring: 218 92% 56%;
+
+    --primary: 218 92% 52%;
+    --primary-foreground: 0 0% 100%;
+    --primary-muted: 218 92% 52% / 0.1;
+
+    --accent: 189 94% 40%;
+    --accent-foreground: 0 0% 100%;
+    --accent-muted: 189 94% 40% / 0.1;
+
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-muted: 0 72% 48% / 0.1;
+
+    --success: 152 62% 33%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 152 62% 33% / 0.1;
+
+    --warning: 34 92% 40%;
+    --warning-foreground: 0 0% 100%;
+    --warning-muted: 34 92% 40% / 0.12;
+
+    --info: 210 90% 48%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 210 90% 48% / 0.1;
+
+    --hot: 12 84% 48%;
+    --warm: 30 90% 42%;
+    --moderate: 210 88% 48%;
+    --cold: 220 9% 46%;
+
+    --shadow-color: 222 40% 20%;
+    --radius: 0.5rem;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    /* Dark — the primary theme. Backgrounds are neutral with a blue cast so
+       the accent reads as part of the system rather than an applied colour. */
+    --background: 224 24% 5%;
+    --surface: 224 20% 7%;
+    --raised: 223 18% 9%;
+    --overlay: 223 18% 10%;
+    --foreground: 213 30% 95%;
+
+    --card: 224 20% 7%;
+    --card-foreground: 213 30% 95%;
+    --popover: 223 18% 10%;
+    --popover-foreground: 213 30% 95%;
+
+    --muted: 222 16% 13%;
+    --muted-foreground: 218 11% 62%;
+    --subtle: 223 17% 11%;
+    --subtle-foreground: 216 14% 72%;
+
+    --border: 220 14% 16%;
+    --border-strong: 219 13% 24%;
+    --input: 220 14% 18%;
+    --ring: 213 96% 62%;
+
+    --primary: 213 96% 60%;
+    --primary-foreground: 224 40% 6%;
+    --primary-muted: 213 96% 60% / 0.14;
+
+    --accent: 187 92% 55%;
+    --accent-foreground: 224 40% 6%;
+    --accent-muted: 187 92% 55% / 0.14;
+
+    --destructive: 0 78% 63%;
+    --destructive-foreground: 224 40% 6%;
+    --destructive-muted: 0 78% 63% / 0.15;
+
+    --success: 152 62% 50%;
+    --success-foreground: 224 40% 6%;
+    --success-muted: 152 62% 50% / 0.15;
+
+    --warning: 38 94% 58%;
+    --warning-foreground: 224 40% 6%;
+    --warning-muted: 38 94% 58% / 0.15;
+
+    --info: 210 94% 62%;
+    --info-foreground: 224 40% 6%;
+    --info-muted: 210 94% 62% / 0.15;
+
+    --hot: 10 90% 62%;
+    --warm: 32 94% 58%;
+    --moderate: 210 94% 62%;
+    --cold: 218 11% 58%;
+
+    --shadow-color: 224 60% 2%;
+
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings:
+      'cv02' 1,
+      'cv03' 1,
+      'cv04' 1,
+      'ss01' 1;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Data readability: every number in the product uses tabular figures so
+     columns never jitter as values change. */
+  .tabular,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.28);
+  }
+
+  /* One focus treatment for the whole app. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 2px);
+  }
+
+  /* Scrollbars that read as part of the surface rather than OS chrome. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong)) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border-strong));
+    border-radius: 8px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Hairline panel: the app's default container. Elevation comes from the
+     surface colour and a 1px border, never from a heavy shadow. */
+  .panel {
+    @apply rounded-lg border border-border bg-surface;
+  }
+
+  .panel-raised {
+    @apply rounded-lg border border-border bg-raised shadow-subtle;
+  }
+
+  /* Section label used above metric groups and in the sidebar. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground;
+  }
+
+  /* A restrained top-lit gradient for hero/AI surfaces. */
+  .surface-gradient {
+    background-image:
+      radial-gradient(120% 100% at 50% 0%, hsl(var(--primary) / 0.07) 0%, transparent 60%),
+      linear-gradient(180deg, hsl(var(--raised)) 0%, hsl(var(--surface)) 100%);
+  }
+
+  .ai-surface {
+    background-image:
+      radial-gradient(100% 120% at 0% 0%, hsl(var(--accent) / 0.1) 0%, transparent 55%),
+      radial-gradient(100% 120% at 100% 0%, hsl(var(--primary) / 0.1) 0%, transparent 55%);
+  }
+
+  /* Skeleton shimmer — used instead of spinners for content loads. */
+  .skeleton {
+    @apply relative overflow-hidden rounded-sm bg-muted;
+  }
+
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--foreground) / 0.05),
+      transparent
+    );
+  }
+
+  /* Interactive row used by the leads table and inbox list. */
+  .row-interactive {
+    @apply cursor-pointer transition-colors duration-150 hover:bg-muted/50 focus-visible:bg-muted/50;
+  }
+
+  /*
+   * Interaction affordances.
+   * Pressing scales very slightly and never changes layout bounds, so
+   * surrounding content stays still while the control responds.
+   */
+  .pressable {
+    @apply transition-transform duration-150 ease-out active:scale-[0.985];
+  }
+
+  /* Underline that draws in from the left on hover — used on inline links. */
+  .link-underline {
+    @apply relative;
+  }
+
+  .link-underline::after {
+    content: '';
+    @apply absolute -bottom-0.5 left-0 h-px w-full origin-right scale-x-0 bg-current transition-transform duration-200 ease-out;
+  }
+
+  .link-underline:hover::after,
+  .link-underline:focus-visible::after {
+    @apply origin-left scale-x-100;
+  }
+
+  /* Icon that nudges in its direction of travel when its control is hovered. */
+  .icon-nudge {
+    @apply transition-transform duration-200 ease-out group-hover:translate-x-0.5;
+  }
+
+  /* Section that lifts on hover without shifting neighbours. */
+  .lift-on-hover {
+    @apply transition-[transform,border-color,background-color,box-shadow] duration-200 ease-out;
+  }
+
+  .lift-on-hover:hover {
+    @apply -translate-y-0.5 border-border-strong shadow-raised;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Long identifiers (URLs, provider IDs) reflow instead of overflowing. */
+  .break-anywhere {
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Smooth in-page anchor movement, disabled under reduced motion below. */
+  .scroll-smooth-y {
+    scroll-behavior: smooth;
+  }
+
+  /* Sticky headers get a hairline only once content scrolls beneath them. */
+  .scroll-shadow {
+    background:
+      linear-gradient(hsl(var(--background)) 30%, hsl(var(--background) / 0)) top / 100% 12px no-repeat,
+      linear-gradient(hsl(var(--background) / 0), hsl(var(--background)) 70%) bottom / 100% 12px no-repeat,
+      radial-gradient(farthest-side at 50% 0, hsl(var(--shadow-color) / 0.12), transparent) top / 100% 6px no-repeat,
+      radial-gradient(farthest-side at 50% 100%, hsl(var(--shadow-color) / 0.12), transparent) bottom / 100% 6px
+        no-repeat;
+    background-attachment: local, local, scroll, scroll;
+  }
+}
+
+/* Motion is a communication device; when the user opts out, state still
+   changes instantly and correctly. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Transform-based affordances are removed entirely rather than sped up,
+     so nothing appears to jump. */
+  .pressable:active,
+  .lift-on-hover:hover {
+    transform: none !important;
+  }
+}

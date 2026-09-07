@@ -1,0 +1,6 @@
+# Normalise line endings so the repo is identical on every platform.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+pnpm-lock.yaml -diff linguist-generated
