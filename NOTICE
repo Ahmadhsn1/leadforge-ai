@@ -1,0 +1,19 @@
+LeadForge AI
+Copyright (c) 2026 LeadForge AI contributors
+
+This product is licensed under the MIT License. See LICENSE.
+
+---
+
+Third-party data
+
+Business records discovered through the OpenStreetMap source are
+© OpenStreetMap contributors and made available under the Open Database
+Licence (ODbL): https://www.openstreetmap.org/copyright
+
+ODbL requires attribution wherever that data is displayed or redistributed.
+The lead detail screen carries it for any lead whose source is
+`openstreetmap`, and the campaign wizard names the source before a run starts.
+
+If you fork this project and add a discovery source, keep that attribution
+behaviour: it is a licence condition, not a courtesy.
