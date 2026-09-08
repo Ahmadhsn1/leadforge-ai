@@ -117,7 +117,7 @@ export default function TeamSettingsPage() {
                 inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="teammate@youragency.com"
+                placeholder="teammate@yourcompany.com"
                 leadingIcon={<Mail />}
                 invalid={Boolean(inviteError)}
                 required

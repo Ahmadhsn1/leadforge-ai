@@ -838,7 +838,7 @@ function OutreachStep({
             id="senderName"
             value={state.senderName}
             onChange={(e) => set('senderName', e.target.value)}
-            placeholder="Alex"
+            placeholder="Your first name"
           />
         </Field>
         <Field label="Your company" htmlFor="senderCompany">
@@ -846,7 +846,7 @@ function OutreachStep({
             id="senderCompany"
             value={state.senderCompany}
             onChange={(e) => set('senderCompany', e.target.value)}
-            placeholder="TractionX Digital"
+            placeholder="Your company name"
           />
         </Field>
       </div>

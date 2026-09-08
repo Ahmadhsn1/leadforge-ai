@@ -98,7 +98,7 @@ export default function ConversationsPage() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search business or message"
+              placeholder="Search by business or message"
               leadingIcon={<Search />}
               className="h-8"
             />

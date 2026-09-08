@@ -54,7 +54,7 @@ export default function StudioIndexPage() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by business name"
+          placeholder="Search by business"
           leadingIcon={<Search />}
           className="h-8"
         />

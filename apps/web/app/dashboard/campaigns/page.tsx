@@ -76,7 +76,7 @@ export default function CampaignsPage() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search campaigns"
+            placeholder="Search by campaign name"
             leadingIcon={<Search />}
             className="h-8"
           />

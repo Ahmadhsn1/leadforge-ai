@@ -143,7 +143,7 @@ export default function WorkspaceSettingsPage() {
                 id="ws-sender"
                 value={senderName}
                 onChange={(e) => setSenderName(e.target.value)}
-                placeholder="Alex"
+                placeholder="Your first name"
                 readOnly={!canEdit}
               />
             </Field>
@@ -152,7 +152,7 @@ export default function WorkspaceSettingsPage() {
                 id="ws-company"
                 value={senderCompany}
                 onChange={(e) => setSenderCompany(e.target.value)}
-                placeholder="TractionX Digital"
+                placeholder="Your company name"
                 readOnly={!canEdit}
               />
             </Field>

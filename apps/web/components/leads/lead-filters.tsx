@@ -86,7 +86,7 @@ export function LeadFilters({
             type="search"
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
-            placeholder="Search business, phone or domain"
+            placeholder="Search by business, phone or domain"
             leadingIcon={<Search />}
             className="h-8"
           />
@@ -358,7 +358,7 @@ function SaveViewButton({ onSave }: { onSave: (name: string) => void }) {
           id="view-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Hot restaurants, no website"
+          placeholder="Hot leads with no website"
           className="h-8"
         />
         <Button

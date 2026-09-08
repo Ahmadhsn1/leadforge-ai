@@ -65,7 +65,7 @@ export function SuppressionManager() {
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search value"
+              placeholder="Search by phone, email or domain"
               leadingIcon={<Search />}
               className="h-8"
             />

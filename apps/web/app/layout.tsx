@@ -17,15 +17,52 @@ const mono = JetBrains_Mono({
   weight: ['400', '500'],
 });
 
+const TAGLINE = 'Find the right businesses. Understand them. Start the right conversation.';
+
+const DESCRIPTION =
+  'LeadForge researches local businesses, explains why each one is worth contacting with citable evidence, and drafts the message you would actually send.';
+
 export const metadata: Metadata = {
+  // Absolute URLs are required for Open Graph. Without a base, Next emits
+  // relative image paths and every link preview renders without an image.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
   title: {
-    default: 'LeadForge AI',
+    default: `LeadForge AI — ${TAGLINE}`,
     template: '%s · LeadForge AI',
   },
-  description:
-    'AI prospect intelligence and outreach. Find the right businesses, understand them, and start the right conversation.',
+  description: DESCRIPTION,
   applicationName: 'LeadForge AI',
+  authors: [{ name: 'LeadForge AI' }],
+  creator: 'LeadForge AI',
+  publisher: 'LeadForge AI',
+  keywords: [
+    'lead generation',
+    'sales intelligence',
+    'AI prospecting',
+    'B2B outreach',
+    'lead scoring',
+    'local business leads',
+  ],
+  // The product is a private workspace, so nothing here belongs in a search
+  // index. Open Graph is unaffected: a crawler fetching a shared link still
+  // reads the card.
   robots: { index: false, follow: false },
+  openGraph: {
+    type: 'website',
+    siteName: 'LeadForge AI',
+    title: `LeadForge AI — ${TAGLINE}`,
+    description: DESCRIPTION,
+    locale: 'en_GB',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: `LeadForge AI — ${TAGLINE}`,
+    description: DESCRIPTION,
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/apple-icon.svg',
+  },
 };
 
 export const viewport: Viewport = {
