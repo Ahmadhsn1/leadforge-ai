@@ -20,6 +20,26 @@ updates:
       next:
         patterns: ['next', 'react', 'react-dom', '@tanstack/*']
     labels: ['dependencies']
+    ignore:
+      # Framework majors change behaviour that only the full suite can validate,
+      # and an auto-opened PR for one sits red until somebody does that work.
+      # They are tracked and upgraded deliberately instead.
+      - dependency-name: 'next'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'react-dom'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@nestjs/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'prisma'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@prisma/client'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'vitest'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'zod'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
