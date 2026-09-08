@@ -205,9 +205,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      # No pnpm and no install: the script reads the registry file and calls a
+      # public endpoint with the built-in fetch. Asking for a pnpm cache here
+      # fails the job on cache-save, because nothing ever populated the store.
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
       - run: node scripts/check-models.mjs
