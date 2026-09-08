@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -80,7 +80,7 @@ jobs:
       AI_ENABLED: 'false'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -141,7 +141,7 @@ jobs:
       WEB_URL: http://localhost:3000
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -204,7 +204,7 @@ jobs:
     if: github.event_name != 'pull_request'
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # No pnpm and no install: the script reads the registry file and calls a
       # public endpoint with the built-in fetch. Asking for a pnpm cache here
       # fails the job on cache-save, because nothing ever populated the store.
