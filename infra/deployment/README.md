@@ -155,3 +155,54 @@ across releases, the previous version keeps working against the current schema.
 - [ ] Legal advice obtained on lawful basis and contact rules for your market
       (see `docs/31-COMPLIANCE-DESIGN.md`) — the platform is built to support
       compliance, but it cannot determine what is lawful for your campaign
+
+---
+
+## 8. Deploying the web app to Vercel
+
+The Next.js app is the one service with a first-class free host. `apps/web`
+carries a `vercel.json` with the build command already set, because Vercel would
+otherwise run `next build` without building `@leadforge/shared` first — the app
+imports its compiled output, not its source.
+
+One-time setup:
+
+1. Install the [Vercel GitHub App](https://github.com/apps/vercel) on the
+   repository. This is an account-level authorisation and has to be done by
+   somebody with admin rights on the GitHub account.
+2. Import the repository in Vercel and set **Root Directory** to `apps/web`.
+3. Set one environment variable:
+
+   ```
+   API_URL = https://your-api-host
+   ```
+
+   That is all the web app needs. The browser never talks to the API directly —
+   it calls `/api/*` on its own origin and the Next.js route handler proxies
+   server-side, so the session cookie stays `httpOnly` and there is no
+   cross-origin cookie configuration to get wrong.
+
+Every push to `main` then deploys automatically.
+
+**Do not** set `NEXT_PUBLIC_API_URL` unless you specifically want the API URL
+visible in the client bundle. `API_URL` is server-only and is the right choice.
+
+---
+
+## 9. Exposing a local stack for testing
+
+To let somebody test a running local stack — a demo, a client review, a
+webhook that needs a public callback — a tunnel is faster than deploying and
+needs no account:
+
+```bash
+cloudflared tunnel --url http://localhost:4000   # the API
+cloudflared tunnel --url http://localhost:3000   # the web app
+```
+
+Each prints a public HTTPS URL. Point the web app's `API_URL` at the API's
+tunnel URL, and the whole product is reachable from anywhere.
+
+Two things to be clear about: the URL changes every time the tunnel restarts,
+and it is public — anyone with the link reaches your local instance. Use it for
+testing, never as a production endpoint.
