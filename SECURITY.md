@@ -115,6 +115,22 @@ Stated openly so you can judge the risk yourself.
   sent a message. There is no provider receipt behind it, and the data model
   says so rather than implying delivery.
 
+## Dependency advisories
+
+Runtime dependencies are kept clear of known advisories. `pnpm.overrides` in the
+root `package.json` lifts transitive packages past an advisory when the direct
+dependency has not yet released a fix.
+
+Two advisories are knowingly accepted, because the fix is not reachable without
+a framework major and neither is exploitable here:
+
+| Package              | Comes from                  | Why it is accepted                                                                                                                                                                                                 |
+| -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `postcss@8.4.31`     | vendored inside `next@15.5` | Runs at build time over this repository's own stylesheets. The advisories need an attacker-controlled `sourceMappingURL` in processed CSS; nothing user-supplied reaches PostCSS. Clears with the Next 16 upgrade. |
+| `deepmerge-ts@7.1.5` | `@prisma/config`            | Merges this repository's own `prisma.config.ts` at CLI start-up. The advisory is stack exhaustion on a recursive object graph; the input is a static local file. Clears when Prisma bumps it.                      |
+
+If you can demonstrate real reachability for either, that is worth reporting.
+
 ## Scope
 
 In scope: this repository's code and configuration.
