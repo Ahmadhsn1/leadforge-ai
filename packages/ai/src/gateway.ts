@@ -105,6 +105,9 @@ export class AiGateway {
       allowedModels: options.allowedModels,
       deniedModels: options.deniedModels,
       estimatedInputTokens,
+      // A per-call override wins; otherwise the deployment-wide setting
+      // decides. This is what keeps a free deployment free.
+      freeOnly: options.freeOnly ?? env().AI_FREE_MODELS_ONLY,
     });
 
     const jsonSchema = prompt.requiresStructuredOutput
@@ -125,7 +128,7 @@ export class AiGateway {
             model: model.id,
             messages: built.messages,
             temperature: options.temperature ?? defaultTemperature(task),
-            maxOutputTokens: options.maxOutputTokens ?? 2_000,
+            maxOutputTokens: options.maxOutputTokens ?? outputBudget(task),
             jsonSchema,
             signal: options.signal,
             requestId,
@@ -214,12 +217,25 @@ export class AiGateway {
       }
     }
 
+    // Carry the last failure's code forward when it is one the caller must act
+    // on differently. A rate limit that arrives labelled PROVIDER_UNAVAILABLE
+    // gets retried in seconds and dies; labelled correctly, the worker
+    // reschedules it past the quota window instead.
+    const lastKind = classifyFailure(lastError);
+    const aggregateCode =
+      lastKind === 'rate_limited'
+        ? 'PROVIDER_RATE_LIMITED'
+        : lastError instanceof AppError && lastError.code === 'AI_BUDGET_EXCEEDED'
+          ? 'AI_BUDGET_EXCEEDED'
+          : 'PROVIDER_UNAVAILABLE';
+
     throw new AppError(
-      'PROVIDER_UNAVAILABLE',
+      aggregateCode,
       `Every candidate model failed for task "${task}". Tried: ${fallbackFrom.join(', ') || 'none'}.`,
       {
         cause: lastError,
-        retryable: true,
+        retryable: aggregateCode !== 'AI_BUDGET_EXCEEDED',
+        retryAfterMs: lastError instanceof AppError ? lastError.retryAfterMs : undefined,
         details: { task, fallbackFrom, routing: decision.reason },
       },
     );
@@ -333,6 +349,7 @@ export class AiGateway {
           task,
           tier: prompt.defaultTier,
           requiresStructuredOutput: prompt.requiresStructuredOutput,
+          freeOnly: env().AI_FREE_MODELS_ONLY,
         });
         return {
           task,
@@ -343,6 +360,34 @@ export class AiGateway {
         return { task, requiresStructuredOutput: prompt.requiresStructuredOutput, candidates: [] };
       }
     });
+  }
+}
+
+/**
+ * Output token budget per task.
+ *
+ * This is not just "how long is the answer". Reasoning models spend the same
+ * budget thinking before they emit a single character, so a task whose JSON is
+ * only a few hundred tokens still needs headroom or it gets cut off mid-string
+ * and fails schema validation. The analysis and message tasks produce the
+ * longest structured output and are the ones that were actually truncating.
+ */
+function outputBudget(task: AiTaskName): number {
+  switch (task) {
+    case 'analyze_business':
+      // A full report: summary, pain points, opportunities, each with evidence.
+      return 6_000;
+    case 'generate_message':
+    case 'score_lead':
+      // A message plus its rationale, or six dimensions each with a reason.
+      return 4_000;
+    case 'validate_message':
+    case 'summarize_conversation':
+      return 3_000;
+    case 'classify_business':
+    case 'classify_reply':
+      // A handful of enum fields.
+      return 2_000;
   }
 }
 

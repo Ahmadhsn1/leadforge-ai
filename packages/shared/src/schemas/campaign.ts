@@ -59,7 +59,7 @@ export type CampaignAiSettings = z.infer<typeof campaignAiSettingsSchema>;
 export const createCampaignSchema = z.object({
   name: trimmed(160),
   description: optionalTrimmed(1_000),
-  source: z.enum(['google_places', 'csv']).default('google_places'),
+  source: z.enum(['google_places', 'openstreetmap', 'csv']).default('openstreetmap'),
   channel: z.enum(CHANNELS).default('whatsapp'),
   target: campaignTargetSchema,
   filters: campaignFiltersSchema.default({}),

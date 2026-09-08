@@ -13,6 +13,7 @@ import {
   MapPin,
   MessageCircle,
   Rocket,
+  Send,
   Sparkles,
   Star,
   Target,
@@ -51,9 +52,42 @@ const STEPS = [
 
 type StepId = (typeof STEPS)[number]['id'];
 
+/**
+ * Discovery sources offered in the wizard.
+ *
+ * The honest trade-off is on the card, because it changes which leads you get:
+ * OpenStreetMap is free and unlimited but carries no ratings or review counts,
+ * so rating filters do nothing there. Google Places has them, and charges.
+ */
+const SOURCES: {
+  value: 'openstreetmap' | 'google_places';
+  label: string;
+  cost: string;
+  free: boolean;
+  description: string;
+}[] = [
+  {
+    value: 'openstreetmap',
+    label: 'OpenStreetMap',
+    cost: 'Free',
+    free: true,
+    description:
+      'Open business data, no API key and no billing account. Strong on independents without a website. Carries no ratings or review counts, so those filters are ignored.',
+  },
+  {
+    value: 'google_places',
+    label: 'Google Places',
+    cost: 'Paid',
+    free: false,
+    description:
+      'Richer coverage with ratings and review counts, so quality filters work. Needs a Google Cloud key with billing enabled.',
+  },
+];
+
 interface WizardState {
   name: string;
   description: string;
+  source: 'openstreetmap' | 'google_places';
   categories: string;
   keywords: string;
   location: string;
@@ -81,6 +115,9 @@ interface WizardState {
 const INITIAL: WizardState = {
   name: '',
   description: '',
+  // OpenStreetMap needs no API key and no billing account, so a new
+  // workspace can run a campaign before connecting anything.
+  source: 'openstreetmap',
   categories: '',
   keywords: '',
   location: '',
@@ -318,6 +355,38 @@ function TargetStep({
         title="Who are you looking for?"
         description="LeadForge searches authorised business listings for the categories and area you define."
       />
+
+      <fieldset className="space-y-2">
+        <legend className="text-xs font-medium">Where should LeadForge look?</legend>
+        <RadioGroup
+          value={state.source}
+          onValueChange={(v) => set('source', v as WizardState['source'])}
+          className="grid gap-2 sm:grid-cols-2"
+        >
+          {SOURCES.map((source) => (
+            <label
+              key={source.value}
+              className={cn(
+                'flex cursor-pointer gap-2.5 rounded-md border p-3 transition-colors',
+                state.source === source.value
+                  ? 'border-primary bg-primary/[0.07]'
+                  : 'border-border hover:border-border-strong',
+              )}
+            >
+              <RadioGroupItem value={source.value} className="mt-0.5" />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  {source.label}
+                  <Badge variant={source.free ? 'success' : 'default'}>{source.cost}</Badge>
+                </span>
+                <span className="mt-0.5 block text-2xs text-muted-foreground text-pretty">
+                  {source.description}
+                </span>
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+      </fieldset>
 
       <Field label="Campaign name" htmlFor="name" error={errors.name} required>
         <Input
@@ -671,6 +740,15 @@ function OutreachStep({
       icon: Mail,
       description: 'Structured and context-rich. Requires SMTP credentials.',
       ready: capabilities?.email ?? false,
+    },
+    {
+      value: 'manual',
+      label: 'Send it yourself',
+      icon: Send,
+      description:
+        'LeadForge writes and checks the message, then hands you a one-click link. You press send from your own account. No provider, no cost.',
+      // Nothing to connect: the user's own phone or inbox is the provider.
+      ready: true,
     },
   ];
 
@@ -1041,7 +1119,7 @@ function toPayload(state: WizardState) {
   return {
     name: state.name.trim(),
     description: state.description.trim() || undefined,
-    source: 'google_places' as const,
+    source: state.source,
     channel: state.channel,
     target: {
       categories: splitList(state.categories),

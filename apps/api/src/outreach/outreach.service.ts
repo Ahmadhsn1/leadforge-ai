@@ -18,6 +18,8 @@ import { assertTransition } from './outreach.state';
 import { WhatsAppAdapter } from './adapters/whatsapp.adapter';
 import { InstagramAdapter } from './adapters/instagram.adapter';
 import { EmailAdapter } from './adapters/email.adapter';
+import { ManualAdapter } from './adapters/manual.adapter';
+import { SequenceService } from './sequence.service';
 import { logger } from '@/common/logger';
 import type { ChannelAdapter } from './adapters/channel-adapter';
 
@@ -48,8 +50,10 @@ export class OutreachService {
     whatsapp: WhatsAppAdapter,
     instagram: InstagramAdapter,
     email: EmailAdapter,
+    private readonly manual: ManualAdapter,
+    private readonly sequences: SequenceService,
   ) {
-    this.adapters = { whatsapp, instagram, email };
+    this.adapters = { whatsapp, instagram, email, manual };
   }
 
   adapterFor(channel: Channel): ChannelAdapter {
@@ -80,6 +84,23 @@ export class OutreachService {
 
     const profile = lead.socialProfiles[0];
     const handle = profile?.username ?? (profile ? socialHandleFromUrl(profile.profileUrl) : null);
+
+    if (channel === 'manual') {
+      // A manual send can go anywhere the user can reach them. Phone first: a
+      // WhatsApp message from a real person gets read, and wa.me pre-fills the
+      // text, so it needs the fewest steps from the user.
+      for (const value of [lead.phone, handle, lead.email]) {
+        if (!value) continue;
+        const attempt = adapter.validateRecipient(value, lead.country ?? 'GB');
+        if (attempt.valid) return { recipient: attempt.normalized, display: value };
+      }
+      return {
+        recipient: null,
+        display: null,
+        reason: 'This lead has no phone, Instagram handle or email to send to.',
+      };
+    }
+
     const validation = adapter.validateRecipient(handle);
     return {
       // Instagram cannot cold-start: `valid` is false until they message first.
@@ -183,6 +204,28 @@ export class OutreachService {
       },
     });
 
+    // A manual message has no queue to join: the user sends it themselves. It
+    // stops at `approved`, the send link becomes available, and `markSentManually`
+    // records the send when they confirm they pressed send.
+    if (draft.channel === 'manual') {
+      await this.prisma.$transaction([
+        this.prisma.activity.create({
+          data: {
+            organizationId,
+            leadId: draft.leadId,
+            campaignId: draft.campaignId ?? null,
+            type: 'message_approved',
+            summary: 'Manual message approved and ready to send.',
+            actor: 'user',
+            actorUserId: options.userId,
+          },
+        }),
+      ]);
+
+      logger('outreach').info({ draftId }, 'manual draft approved and awaiting the user');
+      return updated;
+    }
+
     const delayMs = scheduledAt ? Math.max(0, scheduledAt.getTime() - Date.now()) : 0;
 
     await this.queue.enqueue(
@@ -236,6 +279,175 @@ export class OutreachService {
     );
 
     return { ...updated, status: 'queued' as DraftStatus };
+  }
+
+  /**
+   * The one-click link for a manual send.
+   *
+   * Returns the URL to open plus the exact text, because Instagram has no way
+   * to pre-fill a DM and the UI has to put the body on the clipboard instead.
+   */
+  async manualSendLink(organizationId: string, draftId: string) {
+    const draft = await this.prisma.messageDraft.findFirstOrThrow({
+      where: { id: draftId, organizationId },
+    });
+
+    if (draft.channel !== 'manual') {
+      throw new AppError('BAD_REQUEST', `A ${draft.channel} message is sent by its provider.`, {
+        retryable: false,
+      });
+    }
+    if (draft.status !== 'approved' && draft.status !== 'sent') {
+      throw new AppError('BAD_REQUEST', 'Approve the message before sending it.', {
+        retryable: false,
+      });
+    }
+
+    // Suppression is re-checked here, not only at approval: this is the last
+    // point before a human is handed something to send.
+    const suppressed = await this.suppression.checkLead(organizationId, draft.leadId, 'manual');
+    if (suppressed) {
+      throw new AppError(
+        'SUPPRESSED_RECIPIENT',
+        `This recipient is on the do-not-contact list (${suppressed.scope}).`,
+        { retryable: false },
+      );
+    }
+
+    const { recipient, display } = await this.resolveRecipient(draft.leadId, 'manual');
+    if (!recipient) {
+      throw new AppError('VALIDATION_FAILED', 'This lead has no usable contact.', {
+        retryable: false,
+      });
+    }
+
+    const link = this.manual.buildSendLink(recipient, draft.body, draft.subject);
+    return {
+      draftId,
+      recipient: display ?? recipient,
+      body: draft.body,
+      subject: draft.subject,
+      ...link,
+      alreadySent: draft.status === 'sent',
+    };
+  }
+
+  /**
+   * Records that the user sent a manual message from their own account.
+   *
+   * There is no provider to confirm delivery, so this is the user's word — and
+   * it is recorded as exactly that. It drives the same state machine as an
+   * automated send so follow-ups, the conversation thread and analytics all
+   * behave identically from here on.
+   */
+  async markSentManually(organizationId: string, draftId: string, userId: string) {
+    const draft = await this.prisma.messageDraft.findFirstOrThrow({
+      where: { id: draftId, organizationId },
+    });
+
+    if (draft.channel !== 'manual') {
+      throw new AppError('BAD_REQUEST', `A ${draft.channel} message reports its own send.`, {
+        retryable: false,
+      });
+    }
+    if (draft.status === 'sent') {
+      // Clicking "I sent it" twice is not two messages.
+      return draft;
+    }
+
+    // The draft really does pass through both states; asserting each keeps the
+    // manual path under the same rules as every other channel.
+    assertTransition(draft.status as DraftStatus, 'queued');
+    assertTransition('queued', 'sent');
+
+    const { recipient, display } = await this.resolveRecipient(draft.leadId, 'manual');
+    const sentAt = new Date();
+
+    const updated = await this.prisma.messageDraft.update({
+      where: { id: draftId },
+      data: {
+        status: 'sent',
+        sentAt,
+        // No provider issued an ID, so the draft is its own reference rather
+        // than a fabricated one that looks like a provider receipt.
+        providerMessageId: `manual:${draftId}`,
+        failureReason: null,
+      },
+    });
+
+    // The same conversation thread an automated send would have opened, so
+    // replies the user forwards in land where the rest of the product expects.
+    await this.ensureConversation(
+      organizationId,
+      draft.leadId,
+      'manual',
+      draftId,
+      draft.body,
+      sentAt,
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.outreachEvent.create({
+        data: {
+          organizationId,
+          draftId,
+          leadId: draft.leadId,
+          channel: 'manual',
+          type: 'sent',
+          provider: 'manual',
+          payload: { confirmedBy: userId, recipient: display ?? recipient } as never,
+        },
+      }),
+      this.prisma.activity.create({
+        data: {
+          organizationId,
+          leadId: draft.leadId,
+          campaignId: draft.campaignId ?? null,
+          type: 'sent',
+          summary: `Sent manually to ${display ?? recipient ?? 'the lead'}.`,
+          actor: 'user',
+          actorUserId: userId,
+        },
+      }),
+      this.prisma.lead.update({
+        where: { id: draft.leadId },
+        data: { status: 'contacted', lastContactedAt: sentAt },
+      }),
+    ]);
+
+    await this.incrementMessageCounter(organizationId);
+
+    // Follow-ups are the point of recording the send, so start the sequence.
+    await this.startSequenceAfterManualSend(organizationId, draft.leadId, draftId);
+
+    logger('outreach').info({ draftId }, 'manual send recorded');
+    return updated;
+  }
+
+  /**
+   * Starts the follow-up sequence after a manual first touch.
+   *
+   * Mirrors what the outreach worker does after an automated send, so the
+   * follow-up cadence does not depend on how the first message went out.
+   * Follow-ups only ever chain from a first message, never from a follow-up.
+   */
+  private async startSequenceAfterManualSend(
+    organizationId: string,
+    leadId: string,
+    draftId: string,
+  ): Promise<void> {
+    const draft = await this.prisma.messageDraft.findUnique({
+      where: { id: draftId },
+      include: { campaign: { select: { sequenceId: true } } },
+    });
+    if (!draft || draft.kind !== 'primary') return;
+
+    await this.sequences.start(
+      organizationId,
+      leadId,
+      'manual',
+      draft.campaign?.sequenceId ?? null,
+    );
   }
 
   /** Cancels a draft that has not been sent. */
@@ -517,6 +729,11 @@ export class OutreachService {
 
   /** Scope a suppression should use for a given channel. */
   scopeForChannel(channel: Channel): SuppressionScope {
-    return channel === 'whatsapp' ? 'phone' : channel === 'email' ? 'email' : 'instagram';
+    if (channel === 'whatsapp') return 'phone';
+    if (channel === 'email') return 'email';
+    if (channel === 'instagram') return 'instagram';
+    // A manual send could have gone out over any of them, so suppressing one
+    // identifier would leave the others open. Suppress the lead itself.
+    return 'lead';
   }
 }

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ModelRouter, classifyFailure, shouldFallback, shouldRetrySameModel } from './router';
-import { MODEL_REGISTRY } from './registry';
+import { MODEL_REGISTRY, estimateCost } from './registry';
 import { AppError } from '@leadforge/shared';
 
 const router = new ModelRouter();
 
 describe('ModelRouter', () => {
-  it('picks the cheapest model that meets the tier', () => {
+  it('picks the cheapest paid model that meets the tier', () => {
     const decision = router.route({
       task: 'classify_business',
       tier: 'economy',
@@ -14,11 +14,17 @@ describe('ModelRouter', () => {
     });
     const first = decision.candidates[0];
     expect(first).toBeDefined();
-    // Nothing cheaper may survive ahead of it.
-    const cheaper = decision.candidates.filter(
-      (m) => m.inputCostPerMillion < (first?.inputCostPerMillion ?? 0),
-    );
-    expect(cheaper).toHaveLength(0);
+    expect(first?.free).toBe(false);
+
+    // The router orders on the estimated cost of a whole call, not on the
+    // input rate alone — a model with cheap input and expensive output is not
+    // the cheaper choice. Free models are excluded from the comparison on
+    // purpose: they sort last regardless of price, so that a paid deployment
+    // is never silently downgraded to a rate-limited model.
+    const paid = decision.candidates.filter((m) => !m.free);
+    const costs = paid.map((m) => estimateCost(m, 2_000, 1_500));
+    expect(costs).toEqual([...costs].sort((a, b) => a - b));
+    expect(paid[0]).toBe(first);
   });
 
   it('excludes models that cannot do structured output when required', () => {
@@ -87,9 +93,37 @@ describe('ModelRouter', () => {
         task: 'analyze_business',
         tier: 'quality',
         requiresStructuredOutput: true,
-        maxCostUsd: 0.000001,
+        // Larger than any model's context window, so nothing survives. A cost
+        // ceiling no longer works as the impossible requirement here: free
+        // models really do cost zero and would pass any budget.
+        estimatedInputTokens: 100_000_000,
       }),
     ).toThrow(AppError);
+  });
+
+  it('prefers paid models over free ones, and keeps free ones as fallbacks', () => {
+    const decision = router.route({
+      task: 'analyze_business',
+      tier: 'economy',
+      requiresStructuredOutput: true,
+    });
+
+    expect(decision.candidates[0]?.free).toBe(false);
+    // Free models are still in the chain — just behind everything that pays
+    // for better reliability.
+    expect(decision.candidates.some((model) => model.free)).toBe(true);
+  });
+
+  it('routes only to free models when freeOnly is set', () => {
+    const decision = router.route({
+      task: 'analyze_business',
+      tier: 'quality',
+      requiresStructuredOutput: true,
+      freeOnly: true,
+    });
+
+    expect(decision.candidates.length).toBeGreaterThan(0);
+    expect(decision.candidates.every((model) => model.free)).toBe(true);
   });
 
   it('always returns fallbacks after the primary', () => {
@@ -103,10 +137,12 @@ describe('ModelRouter', () => {
 });
 
 describe('failure classification', () => {
-  it('treats rate limits as retryable on the same model', () => {
+  it('falls back on a rate limit but does not sit and retry the same model', () => {
     const kind = classifyFailure(new AppError('PROVIDER_RATE_LIMITED', 'slow down'));
     expect(kind).toBe('rate_limited');
-    expect(shouldRetrySameModel(kind)).toBe(true);
+    // Sleeping in-process holds a worker slot and does not help: a daily quota
+    // does not reset in five seconds. The worker reschedules the job instead.
+    expect(shouldRetrySameModel(kind)).toBe(false);
     expect(shouldFallback(kind)).toBe(true);
   });
 

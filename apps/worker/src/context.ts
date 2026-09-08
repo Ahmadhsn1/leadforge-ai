@@ -13,6 +13,7 @@ import {
   LeadsService,
   NormalizationService,
   OutreachService,
+  OverpassAdapter,
   PersonalizationService,
   PrismaService,
   QueueService,
@@ -37,6 +38,8 @@ export interface WorkerContext {
   readonly evidence: EvidenceService;
   readonly ai: AiService;
   readonly places: GooglePlacesAdapter;
+  /** Free OpenStreetMap discovery. Needs no key, so it is always available. */
+  readonly overpass: OverpassAdapter;
   readonly normalization: NormalizationService;
   readonly verification: VerificationService;
   readonly enrichment: EnrichmentService;
@@ -65,6 +68,7 @@ export async function createWorkerContext(): Promise<WorkerContext> {
     evidence: app.get(EvidenceService),
     ai: app.get(AiService),
     places: app.get(GooglePlacesAdapter),
+    overpass: app.get(OverpassAdapter),
     normalization: app.get(NormalizationService),
     verification: app.get(VerificationService),
     enrichment: app.get(EnrichmentService),

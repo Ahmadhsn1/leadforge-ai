@@ -344,6 +344,56 @@ export function useApproveDraft() {
   });
 }
 
+/**
+ * The one-click link for a manual send.
+ *
+ * Fetched on demand rather than with the draft: it re-checks suppression and
+ * resolves the recipient at the moment the user is about to send, which is the
+ * only moment that matters.
+ */
+export interface ManualSendLink {
+  draftId: string;
+  recipient: string;
+  body: string;
+  subject: string | null;
+  url: string;
+  kind: 'whatsapp' | 'instagram' | 'email';
+  instruction: string;
+  alreadySent: boolean;
+}
+
+export function useManualSendLink() {
+  return useMutation<ManualSendLink, ApiError, string>({
+    mutationFn: (id) => api.get<ManualSendLink>(`/outreach/${id}/send-link`),
+    onError: (error) =>
+      toast.error('Could not prepare the send link', { description: error.userMessage }),
+  });
+}
+
+/**
+ * Records that the user sent a manual message from their own account.
+ *
+ * There is no provider receipt behind this — it is the user's confirmation, and
+ * the wording in the UI says so.
+ */
+export function useMarkSent() {
+  const qc = useQueryClient();
+  return useMutation<MessageDraftView, ApiError, string>({
+    mutationFn: (id) => api.post<MessageDraftView>(`/outreach/${id}/mark-sent`, {}),
+    onSuccess: (draft) => {
+      qc.invalidateQueries({ queryKey: ['outreach'] });
+      qc.invalidateQueries({ queryKey: qk.lead(draft.leadId) });
+      qc.invalidateQueries({ queryKey: qk.dashboard });
+      qc.invalidateQueries({ queryKey: ['conversations'] });
+      toast.success('Marked as sent', {
+        description: 'Follow-ups are scheduled from now.',
+      });
+    },
+    onError: (error) =>
+      toast.error('Could not record the send', { description: error.userMessage }),
+  });
+}
+
 export function useCancelDraft() {
   const qc = useQueryClient();
   return useMutation<MessageDraftView, ApiError, { id: string; reason?: string }>({

@@ -932,11 +932,28 @@ function SnapshotPanel({ lead }: { lead: LeadDetail }) {
         <SnapshotRow
           icon={Building2}
           label="Source"
-          value={titleCase(lead.source)}
+          value={lead.source === 'openstreetmap' ? 'OpenStreetMap' : titleCase(lead.source)}
           href={lead.sourceUrl}
           external
         />
       </dl>
+
+      {lead.source === 'openstreetmap' ? (
+        // ODbL requires attribution wherever the data is shown, not only in the
+        // docs. https://www.openstreetmap.org/copyright
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Business data from{' '}
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            OpenStreetMap contributors
+          </a>
+          , available under the Open Database Licence.
+        </p>
+      ) : null}
 
       <Separator className="my-3" />
 

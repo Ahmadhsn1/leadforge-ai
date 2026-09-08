@@ -94,6 +94,9 @@ enum Channel {
   whatsapp
   instagram
   email
+  // Prepared and validated here, sent by the user from their own account via a
+  // one-click link. Costs nothing and needs no provider.
+  manual
 }
 
 enum DraftKind {

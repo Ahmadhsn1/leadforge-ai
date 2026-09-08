@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
+  Check,
   Instagram,
   Mail,
   MessageCircle,
@@ -13,6 +14,7 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader, PageShell, Section } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +33,8 @@ import {
 import { FollowUpTimeline } from '@/components/outreach/follow-up-timeline';
 import {
   useApproveDraft,
+  useManualSendLink,
+  useMarkSent,
   useGenerateMessage,
   useLead,
   useSequences,
@@ -44,6 +48,7 @@ const CHANNEL_ICONS: Record<Channel, React.ElementType> = {
   whatsapp: MessageCircle,
   instagram: Instagram,
   email: Mail,
+  manual: Send,
 };
 
 const REFINEMENTS = [
@@ -387,6 +392,8 @@ function DraftEditor({
 }) {
   const update = useUpdateDraft();
   const approve = useApproveDraft();
+  const sendLink = useManualSendLink();
+  const markSent = useMarkSent();
   const [body, setBody] = React.useState(draft.body);
   const [subject, setSubject] = React.useState(draft.subject ?? '');
 
@@ -545,36 +552,172 @@ function DraftEditor({
           promptVersion={draft.promptVersion}
         />
         <div className="flex items-center gap-2">
-          <Tooltip
-            content={
-              lead.suppression
-                ? 'This lead is on the do-not-contact list.'
-                : !canSend
-                  ? 'No usable recipient on this channel.'
-                  : errors.length > 0
-                    ? 'Fix the validation errors before approving.'
-                    : 'Approve and add to the send queue'
-            }
-          >
-            <span>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!canSend || errors.length > 0 || overLimit}
-                loading={approve.isPending}
-                onClick={async () => {
-                  if (dirty)
-                    await update.mutateAsync({ id: draft.id, body, subject: subject || undefined });
-                  approve.mutate({ id: draft.id, body: { startSequence: true } });
-                }}
-              >
-                <Send aria-hidden="true" />
-                Approve and queue
-              </Button>
-            </span>
-          </Tooltip>
+          {draft.channel === 'manual' ? (
+            <ManualSendActions
+              draft={draft}
+              dirty={dirty}
+              blocked={!canSend || errors.length > 0 || overLimit}
+              blockedReason={
+                lead.suppression
+                  ? 'This lead is on the do-not-contact list.'
+                  : !canSend
+                    ? 'No phone, Instagram handle or email to send to.'
+                    : errors.length > 0
+                      ? 'Fix the validation errors first.'
+                      : 'The message is over the length limit.'
+              }
+              onSave={() =>
+                update.mutateAsync({ id: draft.id, body, subject: subject || undefined })
+              }
+              approve={approve}
+              sendLink={sendLink}
+              markSent={markSent}
+            />
+          ) : (
+            <Tooltip
+              content={
+                lead.suppression
+                  ? 'This lead is on the do-not-contact list.'
+                  : !canSend
+                    ? 'No usable recipient on this channel.'
+                    : errors.length > 0
+                      ? 'Fix the validation errors before approving.'
+                      : 'Approve and add to the send queue'
+              }
+            >
+              <span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!canSend || errors.length > 0 || overLimit}
+                  loading={approve.isPending}
+                  onClick={async () => {
+                    if (dirty)
+                      await update.mutateAsync({
+                        id: draft.id,
+                        body,
+                        subject: subject || undefined,
+                      });
+                    approve.mutate({ id: draft.id, body: { startSequence: true } });
+                  }}
+                >
+                  <Send aria-hidden="true" />
+                  Approve and queue
+                </Button>
+              </span>
+            </Tooltip>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The manual send: approve, open, confirm.
+ *
+ * Three deliberate steps rather than one button, because the middle one happens
+ * outside this app. LeadForge cannot observe whether the user actually pressed
+ * send in WhatsApp, so it asks — and the label says exactly that, rather than
+ * implying a delivery receipt it does not have.
+ */
+function ManualSendActions({
+  draft,
+  dirty,
+  blocked,
+  blockedReason,
+  onSave,
+  approve,
+  sendLink,
+  markSent,
+}: {
+  draft: MessageDraftView;
+  dirty: boolean;
+  blocked: boolean;
+  blockedReason: string;
+  onSave: () => Promise<unknown>;
+  approve: ReturnType<typeof useApproveDraft>;
+  sendLink: ReturnType<typeof useManualSendLink>;
+  markSent: ReturnType<typeof useMarkSent>;
+}) {
+  const [opened, setOpened] = React.useState(false);
+  const sent = draft.status === 'sent' || markSent.isSuccess;
+  const approved = draft.status === 'approved' || approve.isSuccess;
+
+  if (sent) {
+    return (
+      <Badge variant="success">
+        <Check className="size-3" aria-hidden="true" />
+        Sent from your account
+      </Badge>
+    );
+  }
+
+  if (!approved) {
+    return (
+      <Tooltip
+        content={blocked ? blockedReason : 'Approve it, then you get a one-click send link.'}
+      >
+        <span>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={blocked}
+            loading={approve.isPending}
+            onClick={async () => {
+              if (dirty) await onSave();
+              approve.mutate({ id: draft.id, body: { startSequence: true } });
+            }}
+          >
+            <Check aria-hidden="true" />
+            Approve
+          </Button>
+        </span>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        variant="primary"
+        size="sm"
+        loading={sendLink.isPending}
+        onClick={async () => {
+          const link = await sendLink.mutateAsync(draft.id);
+          // Instagram has no deep link that pre-fills a DM, so the body goes on
+          // the clipboard and the profile opens instead.
+          if (link.kind === 'instagram') {
+            await navigator.clipboard.writeText(link.body).catch(() => undefined);
+          }
+          window.open(link.url, '_blank', 'noopener,noreferrer');
+          setOpened(true);
+          toast.info(link.instruction);
+        }}
+      >
+        <Send aria-hidden="true" />
+        Open and send
+      </Button>
+
+      <Tooltip
+        content={
+          opened
+            ? 'Confirms you pressed send. Starts the follow-up sequence.'
+            : 'Open the message first.'
+        }
+      >
+        <span>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!opened}
+            loading={markSent.isPending}
+            onClick={() => markSent.mutate(draft.id)}
+          >
+            I sent it
+          </Button>
+        </span>
+      </Tooltip>
     </div>
   );
 }

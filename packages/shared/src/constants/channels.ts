@@ -33,6 +33,17 @@ export const CHANNEL_PROFILES: Readonly<Record<Channel, ChannelProfile>> = {
     styleGuidance: 'Short, light and natural. Reads like a person, not a brochure.',
     recipientField: 'instagram',
   },
+  manual: {
+    channel: 'manual',
+    // WhatsApp is the usual destination for a manual send, so its limit applies.
+    maxLength: 900,
+    targetLength: 420,
+    supportsSubject: false,
+    supportsDeliveryReceipts: false,
+    styleGuidance:
+      'Conversational and direct. This is sent by a person from their own account, so it should read exactly like something they would type.',
+    recipientField: 'phone',
+  },
   email: {
     channel: 'email',
     maxLength: 2200,

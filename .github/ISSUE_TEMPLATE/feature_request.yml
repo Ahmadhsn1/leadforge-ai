@@ -1,0 +1,34 @@
+name: Feature request
+description: Propose a capability the product does not have
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you trying to do that you cannot do today? Describe the
+        situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: How would it stay honest?
+      description: >
+        This product never fabricates data — unknown values stay null, and every
+        AI claim cites stored evidence. If your proposal involves inference or
+        model output, say what it would be grounded in.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
