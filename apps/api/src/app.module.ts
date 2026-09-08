@@ -23,6 +23,7 @@ import { QueueService } from './jobs/queue.service';
 import { AiService } from './ai/ai.service';
 
 import { GooglePlacesAdapter } from './discovery/adapters/google-places.adapter';
+import { OverpassAdapter } from './discovery/adapters/overpass.adapter';
 import { NormalizationService } from './normalization/normalization.service';
 import { VerificationService } from './verification/verification.service';
 import { EnrichmentService } from './enrichment/enrichment.service';
@@ -34,6 +35,7 @@ import { PersonalizationService } from './personalization/personalization.servic
 import { WhatsAppAdapter } from './outreach/adapters/whatsapp.adapter';
 import { InstagramAdapter } from './outreach/adapters/instagram.adapter';
 import { EmailAdapter } from './outreach/adapters/email.adapter';
+import { ManualAdapter } from './outreach/adapters/manual.adapter';
 import { SuppressionService } from './outreach/suppression.service';
 import { SequenceService } from './outreach/sequence.service';
 import { OutreachService } from './outreach/outreach.service';
@@ -98,6 +100,7 @@ import { WebhooksController } from './webhooks/webhooks.controller';
 
     // Pipeline
     GooglePlacesAdapter,
+    OverpassAdapter,
     NormalizationService,
     VerificationService,
     EnrichmentService,
@@ -110,6 +113,7 @@ import { WebhooksController } from './webhooks/webhooks.controller';
     WhatsAppAdapter,
     InstagramAdapter,
     EmailAdapter,
+    ManualAdapter,
     SuppressionService,
     SequenceService,
     OutreachService,
@@ -134,6 +138,7 @@ import { WebhooksController } from './webhooks/webhooks.controller';
     AuditService,
     AiService,
     GooglePlacesAdapter,
+    OverpassAdapter,
     NormalizationService,
     VerificationService,
     EnrichmentService,

@@ -1,226 +1,330 @@
+<div align="center">
+
+<img src="docs/screenshots/lead-intelligence.png" alt="LeadForge AI — lead intelligence" width="900">
+
 # LeadForge AI
 
-AI prospect intelligence and outreach. Find the right businesses, understand them,
-and start the right conversation.
+**Find the right businesses. Understand them. Start the right conversation.**
 
-LeadForge runs the research a good salesperson would do — discovery, verification,
-enrichment, analysis, scoring and message drafting — and shows the evidence behind
-every recommendation. Nothing is sent without a human approving it.
+An AI sales-intelligence platform that researches local businesses, explains
+why each one is worth contacting — with citable evidence for every claim — and
+drafts the message you would actually send.
 
----
+[![CI](https://github.com/Ahmadhsn1/leadforge-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Ahmadhsn1/leadforge-ai/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Ahmadhsn1/leadforge-ai/actions/workflows/codeql.yml/badge.svg)](https://github.com/Ahmadhsn1/leadforge-ai/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](tsconfig.base.json)
+[![Node](https://img.shields.io/badge/Node-20%2B-5FA04E.svg?logo=node.js&logoColor=white)](.nvmrc)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-## What it does
+**198 automated checks** · 87 unit · 14 end-to-end · 68 HTTP · 29 in a real browser
 
-```
-Discovery → Normalisation → Verification → Enrichment → Evidence
-          → AI Intelligence → Scoring → Personalisation
-          → Outreach Queue → Conversations → CRM → Analytics
-```
+[Quickstart](#quickstart) · [Architecture](#architecture) · [Screens](#the-product) · [Zero-cost setup](#running-at-zero-cost) · [Docs](#documentation)
 
-Each stage is an idempotent background job. Each writes evidence. Each is visible
-in the UI while it runs.
-
-**The product principle that shapes everything:** evidence before claims. A pain
-point the AI reports links to a stored observation with a source, a timestamp and
-a confidence value. Verification is deterministic and provider-backed — a lead is
-never marked verified because a model said so. A message citing a statistic the
-evidence cannot support fails validation and cannot be approved.
+</div>
 
 ---
 
-## Quick start
+## The problem this solves
 
-Requirements: Node 20+, pnpm 11+, Docker.
+Lead-generation tools hand you a spreadsheet of ten thousand rows and call it
+pipeline. Someone still has to open each website, work out whether the business
+is worth a message, and write something that does not read like a template.
 
-```bash
-# 1. Configuration
-cp .env.example .env
-# Generate a real secret:
-node -e "console.log('AUTH_SECRET='+require('crypto').randomBytes(32).toString('hex'))"
-# …and paste it into .env
+LeadForge does that research and shows its work.
 
-# 2. Datastores (Postgres on 5462, Redis on 6389 — offset to avoid clashes)
-pnpm docker:up
-
-# 3. Install, migrate, seed
-pnpm install
-pnpm db:migrate
-pnpm db:seed
-
-# 4. Run everything
-pnpm dev
-```
-
-Then open **http://localhost:3000** and sign in with the seeded account:
-
-```
-demo@leadforge.local  /  LeadForgeDemo123
-```
-
-The seed creates one workspace with four leads at different pipeline stages, an
-analysed lead with evidence-backed pain points, a draft awaiting approval, and a
-live conversation — so every screen has something real to render.
-
-To run the whole stack in containers instead: `pnpm stack:up`.
+|                      | Typical lead tool     | LeadForge                                                            |
+| -------------------- | --------------------- | -------------------------------------------------------------------- |
+| **Output**           | A list of contacts    | A ranked shortlist with a reason for each                            |
+| **"Why this lead?"** | Not answered          | Answered, with every claim linked to a stored observation            |
+| **Missing data**     | Guessed or left blank | Explicitly `null` — the UI says _Unknown_, never invents             |
+| **Scores**           | Opaque model output   | Deterministic across 6 dimensions; the model only explains them      |
+| **Messages**         | Mail-merge templates  | Grounded in that business's facts, validated twice before you see it |
+| **Sending**          | Fires automatically   | Nothing leaves without your approval                                 |
 
 ---
 
-## Providers
+## What makes it different
 
-LeadForge does not simulate integrations. An unconfigured provider reports that
-plainly; it never returns invented data. Everything except the two marked
-**required for full function** degrades gracefully.
+### Evidence before claims
 
-| Provider                      | Environment variables                                                                           | Without it                                                                                                                                               |
-| ----------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **OpenRouter** — AI gateway   | `OPENROUTER_API_KEY`                                                                            | Analysis, score explanations, message generation and the copilot return "not configured". Verification, enrichment and deterministic scoring still work. |
-| **Google Places** — discovery | `GOOGLE_MAPS_API_KEY`                                                                           | Campaigns cannot discover businesses. CSV import still works and runs the full pipeline.                                                                 |
-| WhatsApp Business             | `META_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN` | Drafts can be written and reviewed but not sent.                                                                                                         |
-| Instagram                     | `META_ACCESS_TOKEN`, `INSTAGRAM_BUSINESS_ACCOUNT_ID`                                            | As above. Note that Instagram does not permit cold-starting a conversation — see below.                                                                  |
-| Email (SMTP)                  | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`                                          | Email outreach cannot send; verification and reset emails are logged instead.                                                                            |
+Every observation the system makes is written to an evidence record with a
+source, a timestamp and a confidence. When the model says a business has no
+booking call-to-action, that claim carries the evidence id it came from.
 
-Where to get each key is linked in **Settings → Integrations** inside the app.
+**A claim that cannot cite evidence is dropped before it reaches you.** The UI
+labels what is `Observed`, what is `Inferred`, and what is simply `Unknown`.
 
-### Platform limits that are honoured, not worked around
+### Scores you can argue with
 
-- **WhatsApp:** free-form messages are only permitted inside an active 24-hour
-  conversation window. Outside it, Meta requires an approved template. The
-  adapter surfaces that rejection rather than retrying into a ban.
-- **Instagram:** a business account cannot open a conversation with an arbitrary
-  handle. Drafts can be prepared, but sending is only possible after the person
-  messages you first. The UI says so instead of pretending otherwise.
-- There is no login automation, no account rotation, no scraping of private data
-  and no anti-bot evasion anywhere in this codebase.
+Six dimensions — ICP fit, opportunity, contactability, business maturity,
+evidence confidence, urgency — all computed in code from stored facts. The model
+is asked to _explain_ those numbers, and any numbers it returns are discarded.
+
+A score that drifts between runs on identical input cannot be calibrated against
+real outcomes, and cannot be defended to a user who asks why a lead lost ten
+points overnight.
+
+### Messages that pass a hostile read
+
+Two gates, and the first one cannot be talked out of its verdict:
+
+1. a **deterministic rule engine** (17 tests) — no guaranteed outcomes, no
+   invented statistics, no pretending to be an existing customer
+2. an **adversarial model check** for the nuance rules cannot express
+
+### Honest about what it cannot do
+
+Instagram's API cannot start a conversation with someone who has not messaged
+you first — at any price. WhatsApp charges per marketing message and caps how
+many a person can receive. Rather than pretend otherwise, LeadForge ships a
+**manual channel**: it does all the research and writing, then hands you a
+one-click `wa.me` / `mailto` link to send from your own account. Free, unlimited,
+and the only legitimate way to cold-contact on Instagram.
+
+---
+
+## The product
+
+<table>
+<tr>
+<td width="50%">
+
+**Command centre**
+<img src="docs/screenshots/dashboard.png" alt="Dashboard">
+
+</td>
+<td width="50%">
+
+**Message Studio**
+<img src="docs/screenshots/message-studio.png" alt="Message Studio">
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Leads table**
+<img src="docs/screenshots/leads.png" alt="Leads">
+
+</td>
+<td width="50%">
+
+**Campaign wizard**
+<img src="docs/screenshots/campaign-wizard.png" alt="Campaign wizard">
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+**Conversations**
+<img src="docs/screenshots/conversations.png" alt="Conversations inbox">
+
+</td>
+<td width="50%">
+
+**Analytics**
+<img src="docs/screenshots/analytics.png" alt="Analytics">
+
+</td>
+</tr>
+</table>
+
+<sub>Real screenshots from a running instance — the lead above is an actual
+Manchester restaurant discovered through OpenStreetMap, analysed by a live
+model.</sub>
 
 ---
 
 ## Architecture
 
+```mermaid
+flowchart LR
+  subgraph client["Browser"]
+    UI["Next.js 15 · React 19"]
+  end
+
+  subgraph web["apps/web"]
+    PROXY["/api proxy<br/><i>httpOnly session never<br/>reaches client JS</i>"]
+  end
+
+  subgraph api["apps/api · NestJS 11"]
+    AUTH["Auth · multi-tenancy"]
+    DOMAIN["Domain services"]
+  end
+
+  subgraph worker["apps/worker"]
+    JOBS["BullMQ processors<br/><i>same module graph as the API</i>"]
+  end
+
+  subgraph data["Data"]
+    PG[("PostgreSQL 16<br/>37 models")]
+    REDIS[("Redis 7<br/>9 queues")]
+  end
+
+  subgraph ext["External"]
+    OSM["OpenStreetMap"]
+    GP["Google Places"]
+    OR["OpenRouter"]
+    SITES["Lead websites"]
+  end
+
+  UI --> PROXY --> AUTH --> DOMAIN
+  DOMAIN --> PG
+  DOMAIN --> REDIS
+  REDIS --> JOBS
+  JOBS --> DOMAIN
+  JOBS --> OSM & GP & OR & SITES
+
+  classDef store fill:#0b3d2e,stroke:#10b981,color:#d1fae5
+  classDef edge fill:#1e3a5f,stroke:#3b82f6,color:#dbeafe
+  class PG,REDIS store
+  class OSM,GP,OR,SITES edge
 ```
-apps/
-  web/        Next.js 15 App Router. Talks only to /api on its own origin,
-              which proxies to the API with the session cookie attached.
-  api/        NestJS. HTTP boundary, auth, tenancy, orchestration, webhooks.
-  worker/     BullMQ processors. Boots the API's module graph, so the pipeline
-              has exactly one implementation.
-packages/
-  shared/     Types, Zod schemas, domain vocabulary, normalisation utilities.
-  database/   Prisma schema, migrations, client.
-  ai/         AI gateway, model router, versioned prompts, output schemas.
-  config/     Typed, validated environment configuration.
-infra/docker/ Container definitions for all three services.
+
+The worker does not reimplement the domain — it boots the API's own module graph
+as a standalone Nest context. Verification, scoring and outreach are called from
+both the HTTP layer and the queue, and two implementations would drift until a
+lead scored differently depending on which path touched it.
+
+### The pipeline
+
+```mermaid
+flowchart LR
+  D["Discovery"] --> N["Normalise<br/>+ dedupe"] --> E["Enrich"] --> V["Verify"]
+  V --> I["Analyse"] --> S["Score"] --> P["Personalise"] --> A["Approve"] --> O["Send"]
+
+  style D fill:#1e3a5f,stroke:#3b82f6,color:#dbeafe
+  style V fill:#0b3d2e,stroke:#10b981,color:#d1fae5
+  style S fill:#0b3d2e,stroke:#10b981,color:#d1fae5
+  style A fill:#4a2c00,stroke:#f59e0b,color:#fef3c7
 ```
 
-### Decisions worth knowing
+Green stages are fully deterministic — no model involved, identical input gives
+identical output. Every stage is an idempotent job keyed so a retry cannot
+duplicate work.
 
-**The worker runs the API's services.** It boots `AppModule` as a standalone
-Nest context rather than reimplementing verification, scoring or outreach. A
-behaviour that differs between API and worker is therefore impossible.
+### Stack
 
-**Scores are deterministic; explanations are AI.** The six dimensions are
-computed from stored facts in `ScoringService`. The model is asked to explain
-them, never to produce them — a score that changes because a model was in a
-different mood is not a score anyone can act on.
-
-**Two independent validation passes on every message.** A deterministic rule
-engine (`MessageValidator`) that cannot be argued with, plus an adversarial model
-check. Both results are stored on the draft so a reviewer sees exactly why
-something was flagged.
-
-**The browser never holds a token.** The session is an opaque random value in an
-httpOnly cookie; only its SHA-256 is stored. The web app proxies same-origin, so
-there is no cross-origin cookie handling and no token in client JavaScript.
-
-**SSRF protection on every outbound fetch.** A lead's website URL comes from a
-public directory listing that anyone can edit. Hostnames are resolved and every
-returned address is checked against private ranges, redirects are followed
-manually and re-validated per hop, with hard timeout and byte caps.
-
-**Idempotency is structural.** Every job carries a deterministic idempotency key
-and writes a `JobRecord` keyed on `(queue, idempotencyKey)`. A duplicate enqueue
-is a no-op; a retried send finds the draft already sent and stops.
+| Layer        | Choice                                                               |
+| ------------ | -------------------------------------------------------------------- |
+| **Frontend** | Next.js 15 App Router · React 19 · Tailwind · Radix · TanStack Query |
+| **Backend**  | NestJS 11 · Prisma 6 · Zod · argon2id · pino · helmet                |
+| **Data**     | PostgreSQL 16 · Redis 7 · BullMQ 5                                   |
+| **AI**       | OpenRouter gateway with task-based routing and strict JSON schemas   |
+| **Repo**     | pnpm workspace · Turborepo · TypeScript strict                       |
 
 ---
 
-## Commands
+## Quickstart
 
 ```bash
-pnpm dev              # web + api + worker in watch mode
-pnpm dev:api          # one service at a time
-pnpm build            # build everything, packages first
-pnpm typecheck        # tsc across the workspace
+git clone https://github.com/Ahmadhsn1/leadforge-ai.git
+cd leadforge-ai
+pnpm install
+
+cp .env.example .env          # add OPENROUTER_API_KEY
+
+pnpm docker:up                # or: pnpm services  (native, no Docker/WSL)
+pnpm db:migrate
+pnpm db:seed
+pnpm dev                      # web :3000 · api :4000 · worker
+```
+
+Open <http://localhost:3000>, create a workspace, and start a campaign with
+source **OpenStreetMap** — it needs no API key at all.
+
+### Commands
+
+```bash
+pnpm dev              # everything in watch mode
+pnpm build            # packages first, then apps
+pnpm typecheck        # strict, with noUncheckedIndexedAccess
 pnpm lint             # eslint, zero warnings tolerated
-pnpm format           # prettier
-pnpm test             # unit tests (83)
-pnpm test:e2e         # end-to-end against a real database (14)
-pnpm smoke            # HTTP smoke test against a running API (69 assertions)
+pnpm test             # 87 unit tests
+pnpm test:e2e         # 14 tests against a real database
+pnpm smoke            # 68 HTTP assertions against a running API
+pnpm check:models     # every AI model id still exists on OpenRouter
 
-pnpm db:migrate       # create and apply a migration
-pnpm db:seed          # development data
-pnpm db:studio        # Prisma Studio
+node scripts/web-smoke.mjs    # 29 assertions in headless Chrome
+node scripts/live-e2e.mjs     # a real campaign against real providers
 
-pnpm docker:up        # postgres + redis
-pnpm stack:up         # the whole stack in containers
+pnpm services         # postgres + redis as native binaries (no Docker)
+pnpm services:status
+pnpm services:stop
 ```
 
 ---
 
-## Testing
+## Running at zero cost
 
-| Layer                    | What it covers                                                                           | Count |
-| ------------------------ | ---------------------------------------------------------------------------------------- | ----- |
-| `packages/shared`        | Phone/URL normalisation, dedupe matching, similarity                                     | 41    |
-| `packages/ai`            | Model routing, fallback, schema validation, usage accounting                             | 25    |
-| `apps/api` (unit)        | Message validation — every prohibited-claim rule                                         | 17    |
-| `apps/api` (e2e)         | Full pipeline against real Postgres: dedupe, verification, scoring, suppression, tenancy | 14    |
-| `scripts/smoke-test.mjs` | Live HTTP surface: auth, contracts, guards, tenant isolation                             | 69    |
+The whole product runs without a bill:
 
-Tenant isolation is tested explicitly on every read and write path, per the
-definition of done in `docs/38`.
+| Piece         | Free option                                                       |
+| ------------- | ----------------------------------------------------------------- |
+| **Discovery** | OpenStreetMap — no API key, no billing account, no card           |
+| **AI**        | Free OpenRouter models behind a hard `AI_FREE_MODELS_ONLY` filter |
+| **Outreach**  | The `manual` channel — no provider needed                         |
+| **Postgres**  | Neon free tier, or local                                          |
+| **Redis**     | Local                                                             |
+
+[`docs/45-RUNNING-AT-ZERO-COST.md`](docs/45-RUNNING-AT-ZERO-COST.md) covers it
+properly — including where free genuinely runs out. The OpenRouter free tier is
+about 50 requests a day (≈16 fully-processed leads), and there is no free
+always-on cloud host for the worker in 2026. Both are stated plainly rather than
+glossed over.
 
 ---
 
-## Security
+## Engineering notes
 
-- Argon2id password hashing; opaque session tokens, hashed at rest
-- Every organisation-scoped query takes its tenant from the session, never from
-  the request — there is no code path that accepts an organisation ID from a client
-- Role hierarchy enforced by guard: `owner > admin > member > viewer`
-- Webhook signatures verified with a constant-time HMAC comparison; unverified
-  payloads are discarded
-- Secrets never reach the client, the logs (redacted by the logger) or the audit
-  trail (stripped by the audit service)
-- Suppression is checked at queue time **and again immediately before sending**
+Things worth knowing before reading the code.
+
+- **Tenant scope always comes from the session.** Never from a body, path or
+  query. Queries use `findFirst` with the org id rather than `findUnique` by
+  primary key, so a guessed id returns nothing. Asserted on every path by both
+  test suites.
+- **SSRF protection re-validates after every redirect hop.** Enrichment fetches
+  attacker-influenced URLs; private, loopback and cloud-metadata ranges are
+  refused before each hop, with byte and time caps.
+- **Model output is data, never instruction.** Parsed against a Zod schema;
+  invalid output is discarded rather than persisted.
+- **Jobs are idempotent** on deterministic keys, with a unique constraint on
+  `(queue, idempotencyKey)`.
+- **Rate limits reschedule rather than retry.** A daily provider quota used to
+  burn five retry attempts in thirty seconds and dead-letter while the quota
+  still had hours left.
+
+[`docs/43-IMPLEMENTATION-NOTES.md`](docs/43-IMPLEMENTATION-NOTES.md) records
+every deliberate departure from the original design, and the six real bugs that
+only surfaced when the system ran against live providers — every test suite was
+green while they were broken.
 
 ---
 
 ## Documentation
 
-`docs/` is the source of truth for product and engineering decisions and is
-numbered in reading order. Per `docs/39`, an architecture change updates the
-relevant document before the implementation continues.
+| Document                                                    | What it covers                                        |
+| ----------------------------------------------------------- | ----------------------------------------------------- |
+| [Implementation notes](docs/43-IMPLEMENTATION-NOTES.md)     | Design departures, bugs found, verification performed |
+| [Running at zero cost](docs/45-RUNNING-AT-ZERO-COST.md)     | The free path, and where it ends                      |
+| [Running without Docker](docs/44-RUNNING-WITHOUT-DOCKER.md) | Native Postgres and Redis on Windows                  |
+| [Deployment](infra/deployment/README.md)                    | Provisioning, configuration, operations               |
+| [Contributing](CONTRIBUTING.md)                             | Setup, the rules that matter, review expectations     |
+| [Security](SECURITY.md)                                     | Reporting, what the code does, known limits           |
 
-`docs/43-IMPLEMENTATION-NOTES.md` records what was built, where the
-implementation departs from the original design and why, and what platform
-limits turned out to constrain the product (Instagram cannot cold-start a
-conversation; WhatsApp free-form messages need an open 24-hour window).
+The full design set lives in [`docs/`](docs/) — 46 documents covering
+discovery, verification, the evidence model, AI routing, scoring, outreach and
+deployment.
 
 ---
 
-## Current limitations
+## Licence
 
-Stated plainly, because the alternative is discovering them later:
+[MIT](LICENSE).
 
-- **Billing is not wired up.** Plans and quotas are enforced from the workspace's
-  plan record; changing a plan is an operator action. There is no payment flow.
-- **Inbound email replies are not ingested.** SMTP has no webhook; WhatsApp and
-  Instagram replies arrive by webhook and are fully handled. Email reply capture
-  needs a mailbox poller or an inbound-parse provider.
-- **Instagram sending requires an inbound message first** — a platform rule, not
-  an implementation gap.
-- **CSV is the only import format**, and the only discovery source is Google
-  Places. Both sit behind adapter interfaces, so adding another is a new adapter
-  rather than a change to the pipeline.
-- **Merge review is recorded but has no UI.** Medium-confidence duplicate pairs
-  are written to `merge_candidates`; resolving them currently needs a database
-  query.
+Business data discovered through the OpenStreetMap source is © OpenStreetMap
+contributors, available under the [ODbL](https://www.openstreetmap.org/copyright).
+Attribution is required wherever it is displayed, and the lead detail screen
+carries it.

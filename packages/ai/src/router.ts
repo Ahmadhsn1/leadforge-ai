@@ -46,20 +46,28 @@ export class ModelRouter {
       reasons.push('structured output required');
     }
 
-    // 3. Context window must fit the prompt plus room to answer.
+    // 3. Free-only is a hard filter, deliberately applied before tier and
+    //    cost. Someone running at zero budget would rather the call fail
+    //    loudly than silently spend money.
+    if (requirements.freeOnly) {
+      candidates = candidates.filter((model) => model.free);
+      reasons.push('free models only');
+    }
+
+    // 4. Context window must fit the prompt plus room to answer.
     if (requirements.estimatedInputTokens) {
       const needed = requirements.estimatedInputTokens + ASSUMED_OUTPUT_TOKENS;
       candidates = candidates.filter((model) => model.contextWindow >= needed);
       reasons.push(`context >= ${needed} tokens`);
     }
 
-    // 4. Tier is a floor, not an exact match: a stronger model still meets a
+    // 5. Tier is a floor, not an exact match: a stronger model still meets a
     //    weaker requirement, and cost ordering will prefer the cheap one.
     const minTierIndex = TIER_ORDER.indexOf(requirements.tier);
     candidates = candidates.filter((model) => TIER_ORDER.indexOf(model.tier) >= minTierIndex);
     reasons.push(`tier >= ${requirements.tier}`);
 
-    // 5. Per-call cost ceiling.
+    // 6. Per-call cost ceiling.
     if (requirements.maxCostUsd !== undefined) {
       const budget = requirements.maxCostUsd;
       candidates = candidates.filter(
@@ -90,6 +98,13 @@ export class ModelRouter {
    * Orders survivors: cheapest first, breaking ties on latency preference and
    * then on tier so the fallback chain climbs in capability rather than
    * bouncing sideways between equivalent models.
+   *
+   * Free models are the one exception to cost ordering. They cost nothing, so
+   * pure cost ordering would put them first on every call and quietly downgrade
+   * every paying deployment to a rate-limited model. Instead they sort last,
+   * as the fallback that keeps a task working when the paid models are failing.
+   * When `freeOnly` is set there is nothing else in the list, so this ordering
+   * costs that mode nothing.
    */
   private sortCandidates(
     candidates: ModelDescriptor[],
@@ -99,6 +114,8 @@ export class ModelRouter {
     const preferFast = requirements.latencyPreference === 'fast';
 
     return candidates.sort((a, b) => {
+      if (a.free !== b.free) return a.free ? 1 : -1;
+
       if (preferFast) {
         const speed = throughputRank(b.throughput) - throughputRank(a.throughput);
         if (speed !== 0) return speed;
@@ -155,9 +172,17 @@ export function classifyFailure(error: unknown): FailureKind {
   return 'permanent';
 }
 
-/** Whether a failure warrants trying the same model again. */
+/**
+ * Whether a failure warrants trying the same model again.
+ *
+ * Rate limits are deliberately excluded. Sleeping and retrying in-process holds
+ * a worker concurrency slot for up to a minute, and it does not help: the free
+ * OpenRouter quota resets on a daily boundary, not in five seconds. Falling
+ * through the remaining candidates and failing fast lets the worker reschedule
+ * the whole job past the quota window, which is both correct and free.
+ */
 export function shouldRetrySameModel(kind: FailureKind): boolean {
-  return kind === 'transient' || kind === 'rate_limited';
+  return kind === 'transient';
 }
 
 /** Whether a failure warrants moving to the next candidate. */

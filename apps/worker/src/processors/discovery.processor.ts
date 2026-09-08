@@ -8,7 +8,38 @@ import {
 } from '@leadforge/shared';
 import { logger } from '@leadforge/api';
 import type { JobContext, JobHandler } from '../runner';
-import type { RawCandidate } from '@leadforge/api';
+import type { RawCandidate, SourceAdapter } from '@leadforge/api';
+
+/** Page size requested from a discovery source. */
+const PAGE_SIZE = 20;
+
+/**
+ * Picks the discovery source the campaign was created with.
+ *
+ * `openstreetmap` is the default because it needs no API key and no billing
+ * account: OSM data is free to query and free to use under ODbL, so a campaign
+ * can run end to end at zero cost. Google Places is richer — it carries ratings
+ * and review counts that OSM has no equivalent for — but it requires a card on
+ * file, so it is opt-in rather than assumed.
+ */
+function selectSourceAdapter(ctx: JobContext<DiscoveryJob>['ctx'], source: string): SourceAdapter {
+  switch (source) {
+    case 'google_places':
+      return ctx.places;
+    case 'openstreetmap':
+      return ctx.overpass;
+    case 'csv':
+      // CSV rows are imported directly as source records; there is nothing to
+      // page through, so a discovery job should never have been enqueued.
+      throw new AppError('BAD_REQUEST', 'CSV campaigns are imported, not discovered.', {
+        retryable: false,
+      });
+    default:
+      throw new AppError('BAD_REQUEST', `Unknown discovery source "${source}".`, {
+        retryable: false,
+      });
+  }
+}
 
 /**
  * Discovery (docs/10).
@@ -36,8 +67,8 @@ export const discoveryRun: JobHandler<DiscoveryJob> = async ({ payload, ctx }) =
     return;
   }
 
-  const adapter = ctx.places;
-  if (!adapter.isConfigured()) throw AppError.providerNotConfigured('Google Places discovery');
+  const adapter = selectSourceAdapter(ctx, campaign.source);
+  if (!adapter.isConfigured()) throw AppError.providerNotConfigured(`${campaign.source} discovery`);
 
   await ctx.prisma.$transaction([
     ctx.prisma.campaignRun.update({
@@ -56,14 +87,15 @@ export const discoveryRun: JobHandler<DiscoveryJob> = async ({ payload, ctx }) =
   let rateLimitEvents = 0;
   const seen = new Set<string>();
 
-  // Places returns 20 per page; keep paging until the limit is met or the
-  // provider runs out of results.
+  // Sources page differently — Places returns 20 at a time, Overpass returns
+  // whatever the bounding query matched. Keep paging until the limit is met or
+  // the provider runs out of results.
   while (discovered < job.leadLimit && pages < 25) {
     const result = await adapter.search({
       target,
       filters,
       cursor,
-      maxResults: Math.min(20, job.leadLimit - discovered),
+      maxResults: Math.min(PAGE_SIZE, job.leadLimit - discovered),
     });
 
     pages += 1;
@@ -102,7 +134,7 @@ export const discoveryRun: JobHandler<DiscoveryJob> = async ({ payload, ctx }) =
       if (seen.has(candidate.externalId)) continue;
       seen.add(candidate.externalId);
 
-      const stored = await persistSourceRecord(ctx, job, candidate);
+      const stored = await persistSourceRecord(ctx, job, candidate, adapter.sourceName);
       if (!stored) continue;
 
       discovered += 1;
@@ -330,6 +362,7 @@ async function persistSourceRecord(
   ctx: JobContext<DiscoveryJob>['ctx'],
   job: DiscoveryJob,
   candidate: RawCandidate,
+  source: string,
 ) {
   try {
     return await ctx.prisma.leadSourceRecord.create({
@@ -337,7 +370,7 @@ async function persistSourceRecord(
         organizationId: job.organizationId,
         campaignId: job.campaignId,
         runId: job.runId,
-        source: 'google_places',
+        source,
         externalId: candidate.externalId,
         sourceUrl: candidate.sourceUrl ?? null,
         raw: candidate as unknown as never,

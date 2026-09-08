@@ -375,7 +375,14 @@ export class CampaignsService {
           where: { organizationId, campaignId, status: { notIn: ['draft', 'cancelled'] } },
         }),
         this.prisma.activity.findFirst({
-          where: { organizationId, campaignId },
+          // Pipeline activities are stamped with the campaign, but lead-level
+          // ones (a note, a status change, a task) are not — a lead can belong
+          // to several campaigns, so the activity belongs to the lead. Both
+          // count as activity on this campaign, so match either.
+          where: {
+            organizationId,
+            OR: [{ campaignId }, { lead: { campaignLinks: { some: { campaignId } } } }],
+          },
           orderBy: { createdAt: 'desc' },
           select: { createdAt: true },
         }),

@@ -115,7 +115,13 @@ export class GooglePlacesAdapter implements SourceAdapter {
     // text query to stay in the right place.
     const { latitude, longitude, radiusMeters } = criteria.target.geo;
     if (typeof latitude === 'number' && typeof longitude === 'number') {
-      body.locationRestriction = {
+      // Text Search takes a circle under `locationBias`, not
+      // `locationRestriction` — that field only accepts a rectangle here, and
+      // sending a circle is rejected outright with "Unknown name 'circle'".
+      // Bias is also the right semantics: it weights results towards the area
+      // without discarding a business whose registered point sits just outside
+      // the radius.
+      body.locationBias = {
         circle: { center: { latitude, longitude }, radius: Math.min(50_000, radiusMeters) },
       };
     }

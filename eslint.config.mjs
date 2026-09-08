@@ -60,5 +60,11 @@ export default tseslint.config(
     files: ['packages/database/prisma/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
+  {
+    // `page.evaluate` bodies run inside the browser, not Node, so `document`
+    // and `getComputedStyle` are legitimately in scope there.
+    files: ['scripts/web-smoke.mjs'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
   prettier,
 );

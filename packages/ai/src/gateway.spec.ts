@@ -51,6 +51,10 @@ const BUSINESS = {
 beforeEach(() => {
   process.env.AI_ENABLED = 'true';
   process.env.OPENROUTER_API_KEY = 'test-key';
+  // Pin the routing mode rather than inheriting whatever the developer has in
+  // .env. With free-models-only on, every call costs zero, which quietly
+  // invalidates the cost assertions below.
+  process.env.AI_FREE_MODELS_ONLY = 'false';
 });
 
 describe('AiGateway', () => {
@@ -72,6 +76,40 @@ describe('AiGateway', () => {
     expect(usage).toHaveLength(1);
     expect(usage[0]?.success).toBe(true);
     expect(usage[0]?.estimatedCostUsd).toBeGreaterThan(0);
+  });
+
+  it('reports a rate limit as a rate limit after every model has been tried', async () => {
+    // The aggregate error used to flatten every cause to PROVIDER_UNAVAILABLE.
+    // The worker keys its "reschedule instead of retry" behaviour off this
+    // code, so losing it meant a daily quota burned all five retry attempts in
+    // half a minute and dead-lettered while the quota was still exhausted.
+    const gateway = new AiGateway({
+      provider: new ScriptedProvider(() => {
+        throw new AppError('PROVIDER_RATE_LIMITED', 'OpenRouter rate limit reached.', {
+          retryable: true,
+        });
+      }),
+    });
+
+    await expect(gateway.run('classify_business', BUSINESS)).rejects.toMatchObject({
+      code: 'PROVIDER_RATE_LIMITED',
+    });
+  });
+
+  it('reports an exhausted budget as non-retryable', async () => {
+    // No amount of waiting fixes an empty account, so this must not be retried.
+    const gateway = new AiGateway({
+      provider: new ScriptedProvider(() => {
+        throw new AppError('AI_BUDGET_EXCEEDED', 'OpenRouter reports insufficient credit.', {
+          retryable: false,
+        });
+      }),
+    });
+
+    await expect(gateway.run('classify_business', BUSINESS)).rejects.toMatchObject({
+      code: 'AI_BUDGET_EXCEEDED',
+      retryable: false,
+    });
   });
 
   it('unwraps a markdown-fenced JSON response and marks it repaired', async () => {

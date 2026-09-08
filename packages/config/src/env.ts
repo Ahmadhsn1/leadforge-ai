@@ -93,6 +93,14 @@ export const envSchema = z.object({
   AI_ENABLED: bool(true),
   AI_MONTHLY_USD_BUDGET: num(50),
   AI_DEFAULT_TIER: z.enum(['economy', 'balanced', 'quality']).default('balanced'),
+  /**
+   * Restricts routing to models OpenRouter serves at no cost.
+   *
+   * Free models are rate limited and generally weaker, so this trades
+   * throughput and some output quality for a zero AI bill. It is a hard
+   * filter, not a preference: with it on, a paid model is never called.
+   */
+  AI_FREE_MODELS_ONLY: bool(false),
 
   GOOGLE_MAPS_API_KEY: optionalString,
   DISCOVERY_MAX_RESULTS_PER_RUN: int(200),

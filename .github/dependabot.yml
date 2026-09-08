@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per ecosystem rather than twenty: these move together and are
+      # reviewed together.
+      types:
+        patterns: ['@types/*']
+      linting:
+        patterns: ['eslint*', '@typescript-eslint/*', 'prettier*']
+      testing:
+        patterns: ['vitest*', '@vitest/*', 'supertest', 'puppeteer*']
+      nest:
+        patterns: ['@nestjs/*']
+      next:
+        patterns: ['next', 'react', 'react-dom', '@tanstack/*']
+    labels: ['dependencies']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: ['dependencies', 'ci']

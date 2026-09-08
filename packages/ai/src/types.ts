@@ -38,6 +38,8 @@ export interface RoutingRequirements {
   readonly deniedModels?: readonly string[];
   /** Approximate prompt size, used to exclude models with too little context. */
   readonly estimatedInputTokens?: number;
+  /** Excludes every model that costs money. Set from AI_FREE_MODELS_ONLY. */
+  readonly freeOnly?: boolean;
 }
 
 export interface RoutingDecision {
@@ -60,6 +62,12 @@ export interface AiCallOptions {
   readonly campaignId?: string;
   readonly leadId?: string;
   readonly signal?: AbortSignal;
+  /**
+   * Forces this call onto free models, or off them, overriding
+   * AI_FREE_MODELS_ONLY. Useful for a single high-stakes task on an otherwise
+   * free deployment.
+   */
+  readonly freeOnly?: boolean;
 }
 
 export interface AiUsageMetrics {
@@ -185,7 +193,7 @@ export interface GenerateMessageInput {
   readonly business: BusinessFacts;
   readonly evidence: readonly EvidenceFact[];
   readonly angle: string;
-  readonly channel: 'whatsapp' | 'instagram' | 'email';
+  readonly channel: 'whatsapp' | 'instagram' | 'email' | 'manual';
   readonly kind: string;
   readonly tone: string;
   readonly cta: string;

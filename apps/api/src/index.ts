@@ -18,6 +18,7 @@ export { AuditService } from './organizations/audit.service';
 export { AiService } from './ai/ai.service';
 
 export { GooglePlacesAdapter } from './discovery/adapters/google-places.adapter';
+export { OverpassAdapter } from './discovery/adapters/overpass.adapter';
 export type {
   RawCandidate,
   SearchCriteria,
@@ -40,6 +41,7 @@ export { SuppressionService } from './outreach/suppression.service';
 export { WhatsAppAdapter } from './outreach/adapters/whatsapp.adapter';
 export { InstagramAdapter } from './outreach/adapters/instagram.adapter';
 export { EmailAdapter } from './outreach/adapters/email.adapter';
+export { ManualAdapter } from './outreach/adapters/manual.adapter';
 export type { ChannelAdapter, NormalizedEvent } from './outreach/adapters/channel-adapter';
 
 export { ConversationsService } from './conversations/conversations.service';

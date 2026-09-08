@@ -1,4 +1,4 @@
-import { Worker, Job, Processor } from 'bullmq';
+import { Worker, Job, Processor, DelayedError } from 'bullmq';
 import IORedis, { type Redis } from 'ioredis';
 import {
   AppError,
@@ -62,7 +62,7 @@ export class WorkerRunner {
     const policy = QUEUE_POLICIES[key];
     const queueName = QUEUE_NAMES[key];
 
-    const processor: Processor = async (job: Job) => {
+    const processor: Processor = async (job: Job, token?: string) => {
       const handler = handlers[job.name];
       if (!handler) {
         logger('worker').error(
@@ -71,7 +71,7 @@ export class WorkerRunner {
         );
         return;
       }
-      await this.run(job, handler as JobHandler<unknown>, queueName);
+      await this.run(job, handler as JobHandler<unknown>, queueName, token);
     };
 
     const worker = new Worker(queueName, processor, {
@@ -83,6 +83,9 @@ export class WorkerRunner {
     });
 
     worker.on('failed', (job, error) => {
+      // A rescheduled job surfaces here as a DelayedError. It is not a failure.
+      if (error instanceof DelayedError || error?.name === 'DelayedError') return;
+
       logger('worker').error(
         {
           queue: queueName,
@@ -107,7 +110,12 @@ export class WorkerRunner {
   }
 
   /** Executes one job with logging, JobRecord updates and failure classification. */
-  private async run(job: Job, handler: JobHandler<unknown>, queueName: string): Promise<void> {
+  private async run(
+    job: Job,
+    handler: JobHandler<unknown>,
+    queueName: string,
+    token?: string,
+  ): Promise<void> {
     const payload = job.data as BasePayload;
     const startedAt = Date.now();
 
@@ -143,6 +151,32 @@ export class WorkerRunner {
           log.info({ name: job.name, durationMs: Date.now() - startedAt }, 'job completed');
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+
+          // A provider rate limit is a clock problem, not a code problem. The
+          // free OpenRouter tier resets on a daily boundary, so burning five
+          // BullMQ attempts inside thirty seconds guarantees the job dies
+          // while the quota is still exhausted. Rescheduling instead keeps the
+          // attempt budget for real failures and lets the work resume when the
+          // window reopens.
+          const retryAfterMs = rateLimitDelayMs(error);
+          if (retryAfterMs !== null && token) {
+            await this.ctx.prisma.jobRecord
+              .update({
+                where: { id: payload.jobId },
+                data: { status: 'queued', error: message.slice(0, 2_000), finishedAt: null },
+              })
+              .catch(() => undefined);
+
+            log.warn(
+              { name: job.name, retryAfterMs },
+              'provider rate limited; rescheduling without consuming an attempt',
+            );
+
+            await job.moveToDelayed(Date.now() + retryAfterMs, token);
+            // BullMQ treats this specific error as "I rescheduled myself".
+            throw new DelayedError();
+          }
+
           const retryable = isRetryableError(error);
           const attemptsLeft = (job.opts.attempts ?? 1) - (job.attemptsMade + 1);
           const willRetry = retryable && attemptsLeft > 0;
@@ -212,4 +246,28 @@ export class WorkerRunner {
     await this.connection.quit().catch(() => undefined);
     await this.ctx.app.close();
   }
+}
+
+/**
+ * How long to wait before retrying a rate-limited job, or null if the failure
+ * was not a rate limit.
+ *
+ * A provider that tells us when to come back is believed. Otherwise the wait is
+ * long enough to be worth rescheduling for — most free-tier quotas are daily,
+ * and a one-minute retry would simply fail again.
+ */
+function rateLimitDelayMs(error: unknown): number | null {
+  // Match on the code first, then fall back to the message: an error that has
+  // been wrapped on its way up can lose the code but keeps the reason in text.
+  const byCode =
+    error instanceof AppError &&
+    (error.code === 'PROVIDER_RATE_LIMITED' || error.code === 'RATE_LIMITED');
+  const byMessage =
+    error instanceof Error && /rate.?limit(ed)?|429|too many requests/i.test(error.message);
+  const isRateLimit = byCode || byMessage;
+
+  if (!isRateLimit) return null;
+
+  const hinted = error instanceof AppError ? error.retryAfterMs : undefined;
+  return hinted && hinted > 0 ? hinted : 15 * 60_000;
 }

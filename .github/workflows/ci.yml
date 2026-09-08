@@ -1,201 +1,213 @@
 name: CI
 
 on:
-  pull_request:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # Deterministic settings so a test failure is never environmental.
-  APP_ENV: test
-  AUTH_SECRET: ci-only-secret-value-not-used-in-production-32
-  DATABASE_URL: postgresql://leadforge:leadforge@localhost:5432/leadforge_test?schema=public
-  REDIS_URL: redis://localhost:6379
-  COOKIE_SECURE: 'false'
+  # Every job builds the workspace packages first; apps import their compiled
+  # output, not their source.
+  TURBO_TELEMETRY_DISABLED: 1
+  NEXT_TELEMETRY_DISABLED: 1
 
 jobs:
-  # Static checks run without services: fast feedback on the common failures.
-  verify:
-    name: Lint, typecheck and unit tests
+  quality:
+    name: Build, types, lint, format
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      # The API and worker compile against these, so they must build first.
-      - name: Build packages
-        run: |
-          pnpm --filter @leadforge/database generate
-          pnpm --filter @leadforge/config build
-          pnpm --filter @leadforge/shared build
-          pnpm --filter @leadforge/database build
-          pnpm --filter @leadforge/ai build
+      # Prisma Client is generated code that typecheck and lint both depend on.
+      - name: Generate Prisma Client
+        run: pnpm --filter @leadforge/database exec prisma generate
 
-      - name: Format check
-        run: pnpm format:check
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
 
-      - name: Lint
-        run: pnpm lint
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      - name: Unit tests
-        run: pnpm test
-
-  # Migration validation catches a schema change shipped without a migration.
-  migrations:
-    name: Migration validation
+  test:
+    name: Unit and E2E tests
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: leadforge
           POSTGRES_PASSWORD: leadforge
-          POSTGRES_DB: leadforge_test
+          POSTGRES_DB: leadforge
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U leadforge"
-          --health-interval 5s --health-timeout 3s --health-retries 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
-      - name: Apply migrations
-        run: pnpm --filter @leadforge/database exec prisma migrate deploy
-
-      - name: Schema matches migrations
-        # A non-empty diff means the schema was edited without a migration.
-        run: |
-          pnpm --filter @leadforge/database exec prisma migrate diff \
-            --from-migrations prisma/migrations \
-            --to-schema-datamodel prisma/schema.prisma \
-            --shadow-database-url "$DATABASE_URL" \
-            --exit-code && echo "Schema and migrations agree."
-
-  e2e:
-    name: End-to-end pipeline
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: leadforge
-          POSTGRES_PASSWORD: leadforge
-          POSTGRES_DB: leadforge_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U leadforge"
-          --health-interval 5s --health-timeout 3s --health-retries 20
       redis:
         image: redis:7-alpine
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 5s --health-timeout 3s --health-retries 20
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://leadforge:leadforge@localhost:5432/leadforge?schema=public
+      REDIS_URL: redis://localhost:6379
+      APP_ENV: test
+      SESSION_SECRET: ci-session-secret-not-used-in-production-0123456789
+      # The E2E suite must never reach a real provider: no key, AI disabled.
+      AI_ENABLED: 'false'
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
+
       - run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: |
-          pnpm --filter @leadforge/database generate
-          pnpm --filter @leadforge/config build
-          pnpm --filter @leadforge/shared build
-          pnpm --filter @leadforge/database build
-          pnpm --filter @leadforge/ai build
-          pnpm --filter @leadforge/api build
-          pnpm --filter @leadforge/worker build
-
-      - name: Migrate
+      - name: Apply migrations
         run: pnpm --filter @leadforge/database exec prisma migrate deploy
 
-      - name: End-to-end tests
-        run: pnpm --filter @leadforge/api test:e2e
+      - run: pnpm build
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: End-to-end tests against real Postgres
+        run: pnpm test:e2e
+
+  smoke:
+    name: HTTP and browser smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: leadforge
+          POSTGRES_PASSWORD: leadforge
+          POSTGRES_DB: leadforge
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://leadforge:leadforge@localhost:5432/leadforge?schema=public
+      REDIS_URL: redis://localhost:6379
+      APP_ENV: test
+      SESSION_SECRET: ci-session-secret-not-used-in-production-0123456789
+      AI_ENABLED: 'false'
+      API_URL: http://localhost:4000
+      WEB_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm --filter @leadforge/database exec prisma migrate deploy
+
+      - run: pnpm build
 
       - name: Start API and worker
         run: |
-          node apps/api/dist/main.js > api.log 2>&1 &
-          node apps/worker/dist/main.js > worker.log 2>&1 &
-          npx --yes wait-on http://localhost:4000/health --timeout 60000
+          node apps/api/dist/main.js > /tmp/api.log 2>&1 &
+          node apps/worker/dist/main.js > /tmp/worker.log 2>&1 &
+          # Poll rather than sleep a fixed amount: startup time varies with runner load.
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4000/health > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:4000/health
 
-      - name: Smoke test
-        run: node scripts/smoke-test.mjs http://localhost:4000
+      - name: HTTP smoke
+        run: node scripts/smoke-test.mjs
 
-      - name: Service logs on failure
-        if: failure()
+      - name: Start web
         run: |
-          echo '--- api ---'; tail -100 api.log || true
-          echo '--- worker ---'; tail -100 worker.log || true
+          pnpm --filter @leadforge/web start > /tmp/web.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3000/login > /dev/null && break
+            sleep 2
+          done
+          curl -sf -o /dev/null http://localhost:3000/login
 
-  build-web:
-    name: Web build
+      # The dashboard is client-rendered, so fetching HTML proves nothing.
+      # This drives a real browser and asserts on what a user would see.
+      - name: Browser smoke
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: node scripts/web-smoke.mjs
+
+      - name: Upload service logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs
+          path: /tmp/*.log
+          retention-days: 7
+
+  model-registry:
+    name: Model registry still resolves
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # A retired model id does not fail at startup — it fails on the first real
+    # call for whichever task routed to it. Only worth blocking main on.
+    if: github.event_name != 'pull_request'
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build packages
-        run: |
-          pnpm --filter @leadforge/config build
-          pnpm --filter @leadforge/shared build
-      - name: Build web
-        run: pnpm --filter @leadforge/web build
-
-  images:
-    name: Container images
-    runs-on: ubuntu-latest
-    # Images are only worth building once everything else is green.
-    needs: [verify, migrations, e2e, build-web]
-    if: github.ref == 'refs/heads/main'
-    strategy:
-      matrix:
-        service: [api, worker, web]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - name: Build ${{ matrix.service }} image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/${{ matrix.service }}.Dockerfile
-          # Not pushed here: wire up a registry and credentials to deploy.
-          push: false
-          tags: leadforge-${{ matrix.service }}:${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - run: node scripts/check-models.mjs

@@ -74,7 +74,15 @@ export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 export const TEMPERATURES = ['hot', 'warm', 'moderate', 'low', 'unscored'] as const;
 export type Temperature = (typeof TEMPERATURES)[number];
 
-export const CHANNELS = ['whatsapp', 'instagram', 'email'] as const;
+/**
+ * Outreach channels.
+ *
+ * `manual` is the zero-cost path: LeadForge prepares and validates the message
+ * and hands the user a one-click link (wa.me, an Instagram profile, a mailto),
+ * and the user sends it from their own account. It needs no provider, costs
+ * nothing, and is the only way to cold-contact on Instagram at all.
+ */
+export const CHANNELS = ['whatsapp', 'instagram', 'email', 'manual'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
 export const DRAFT_KINDS = [

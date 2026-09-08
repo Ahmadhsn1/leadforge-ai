@@ -148,6 +148,26 @@ export class OpenRouterProvider implements AiProvider {
       });
     }
 
+    // A response cut off at the token limit is almost always truncated JSON.
+    // Left alone it surfaces as "not valid JSON", which sends whoever debugs it
+    // looking for a schema bug instead of a budget that is too small — and it
+    // is easy to hit, because reasoning models spend this same budget thinking
+    // before they write anything.
+    if (payload.choices?.[0]?.finish_reason === 'length') {
+      throw new AppError(
+        'PROVIDER_ERROR',
+        `The model hit the ${request.maxOutputTokens}-token output limit before finishing its response.`,
+        {
+          retryable: true,
+          details: {
+            maxOutputTokens: request.maxOutputTokens,
+            completionTokens: payload.usage?.completion_tokens,
+            snippet: content.slice(-200),
+          },
+        },
+      );
+    }
+
     return {
       text: content,
       model: request.model,

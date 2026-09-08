@@ -133,6 +133,46 @@ export class OutreachController {
     return this.leads.serializeDraft(draft, lead.canonicalName, null);
   }
 
+  /**
+   * The one-click send link for a manual message.
+   *
+   * A read, not a send: it returns where to open and what to say. Nothing
+   * leaves the system until the user confirms with `/send-link/confirm`.
+   */
+  @Get(':id/send-link')
+  @RequireRole('member')
+  async sendLink(@OrgId() organizationId: string, @Param('id') id: string) {
+    return this.outreach.manualSendLink(organizationId, id);
+  }
+
+  /**
+   * Records that the user sent the manual message themselves.
+   *
+   * Audited as a send, because that is what it is — there is just no provider
+   * receipt behind it, only the user's confirmation.
+   */
+  @Post(':id/mark-sent')
+  @RequireRole('member')
+  @HttpCode(200)
+  async markSent(@Auth() auth: AuthContext, @Param('id') id: string) {
+    const draft = await this.outreach.markSentManually(auth.organization.id, id, auth.user.id);
+
+    await this.audit.record({
+      organizationId: auth.organization.id,
+      userId: auth.user.id,
+      action: 'mark_message_sent',
+      resource: 'message_draft',
+      resourceId: id,
+      metadata: { channel: draft.channel, confirmedByUser: true },
+    });
+
+    const lead = await this.prisma.lead.findUniqueOrThrow({
+      where: { id: draft.leadId },
+      select: { canonicalName: true },
+    });
+    return this.leads.serializeDraft(draft, lead.canonicalName, null);
+  }
+
   @Post(':id/cancel')
   @RequireRole('member')
   @HttpCode(200)

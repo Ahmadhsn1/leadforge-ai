@@ -162,3 +162,123 @@ The AI gateway (`packages/ai/src/gateway.ts`) and router
 (`packages/ai/src/router.ts`) are worth reading together: routing policy,
 fallback behaviour and schema enforcement are the three things that make model
 choice an implementation detail everywhere else.
+
+---
+
+## The zero-cost path
+
+A second build pass made the whole product operable without a bill. Three
+mechanisms, each documented in full in `docs/45-RUNNING-AT-ZERO-COST.md`:
+
+### OpenStreetMap discovery
+
+`OverpassAdapter` is a second `SourceAdapter` alongside Google Places. It needs
+no API key and no billing account, which Google Places does — the 10,000 free
+monthly calls only start after a card is attached to the Cloud project.
+
+The adapter maps about sixty human categories onto OSM tags, fails over across
+three public Overpass mirrors, and returns `null` for `rating` and
+`reviewCount` because OSM carries neither. Reporting null is the point:
+inventing a proxy would be exactly the fabrication this product exists to avoid.
+Rating filters therefore do nothing on an OSM campaign, and the wizard says so
+on the source card rather than leaving the user to discover it.
+
+`campaign.source` now selects the adapter in `discovery.processor.ts`, and the
+persisted `LeadSourceRecord.source` follows the adapter rather than being
+hardcoded to `google_places`.
+
+### The `manual` channel
+
+Cold outreach on WhatsApp and Instagram is limited by platform policy, not by
+price — and on Instagram the API cannot address a handle at all, at any price.
+So `manual` is a first-class channel rather than a fallback: LeadForge does
+everything up to the send, then hands the user a `wa.me`, `mailto:` or profile
+link, and records the send when they confirm it.
+
+`ManualAdapter.send()` throws deliberately. The outreach worker never reaches
+it — `approve()` short-circuits for manual drafts and never enqueues a send job
+— and throwing makes an accidental automated send impossible rather than merely
+unlikely. `markSentManually()` drives the same state machine as a real send, so
+conversations, CRM status, analytics and follow-up sequences all behave
+identically from that point on. The `providerMessageId` is `manual:<draftId>`,
+which is honest about there being no provider receipt behind it.
+
+### Free models, as a hard filter
+
+`AI_FREE_MODELS_ONLY` restricts routing to models OpenRouter serves at no cost,
+so a misconfiguration cannot produce a bill. Four registry models are free _and_
+support strict JSON schema output; most free models do not, and a model that
+cannot honour the schema fails every task here, so they are absent.
+
+Free models sort **last** among candidates rather than first. Ordering purely on
+cost would put a zero-cost model at the head of every chain and quietly
+downgrade every paying deployment to a rate-limited model.
+
+---
+
+## Bugs the live runs found
+
+Unit tests, E2E and the HTTP smoke suite all passed while these were broken.
+Only running the real thing against real providers surfaced them.
+
+1. **Four of twelve registry model ids no longer existed on OpenRouter.**
+   `anthropic/claude-3.5-haiku`, `anthropic/claude-3.7-sonnet`,
+   `google/gemini-2.0-flash-001` and a retired free Gemini all returned "model
+   is not available". Nothing failed at startup — each failed on the first real
+   call for whichever task routed to it. `pnpm check:models` now validates every
+   id against the live catalogue and exits non-zero on drift.
+
+2. **Google Places discovery was entirely broken.** The adapter sent a circle
+   under `locationRestriction`, which Text Search rejects outright with
+   `Unknown name "circle"`; a circle belongs under `locationBias`. Every
+   coordinate-targeted Places campaign failed. Bias is also the better
+   semantics — it weights towards the area without discarding a business whose
+   registered point sits just outside the radius.
+
+3. **Message generation truncated instead of failing.** Reasoning models spend
+   the `max_tokens` budget thinking before they emit anything, so a flat 2,000
+   cut the JSON off mid-string and surfaced as "not valid JSON" — which sends
+   whoever debugs it looking for a schema bug. Budgets are now per task, and a
+   `finish_reason: "length"` is reported as truncation with the token count.
+
+4. **A daily quota burned every retry in thirty seconds.** The gateway flattened
+   every aggregate failure to `PROVIDER_UNAVAILABLE`, so the worker could not
+   tell a rate limit from an outage: five BullMQ attempts, then dead letter,
+   while the quota still had hours to run. The aggregate error now carries the
+   rate-limit code, and the worker calls `moveToDelayed` instead of consuming an
+   attempt. The gateway also no longer sleeps and retries the same model on a
+   rate limit — that held a worker slot for up to a minute and never helped.
+
+5. **A campaign's "last activity" was always null.** Pipeline activities carry a
+   `campaignId`, but lead-level ones (a note, a status change, a task) do not,
+   because a lead can belong to several campaigns. The campaign screen therefore
+   showed no activity right after the user had acted on one of its leads. Caught
+   by the E2E suite once the pipeline actually ran.
+
+6. **Two tests were passing for the wrong reason.** One asserted "cheapest
+   first" using the input rate while the router sorts on whole-call cost — it
+   only passed because a zero-cost model happened to sit at the head. Another
+   inherited `AI_FREE_MODELS_ONLY` from the developer's `.env`, so its cost
+   assertion silently became `0 > 0`. Both now pin what they mean.
+
+---
+
+## Verification performed (second pass)
+
+| Check                        | Result                                                                                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm build`                 | All 7 packages/apps build                                                                                                                                              |
+| `pnpm typecheck`             | Clean, strict with `noUncheckedIndexedAccess`                                                                                                                          |
+| `pnpm lint`                  | Clean, zero warnings tolerated                                                                                                                                         |
+| `pnpm format:check`          | Clean                                                                                                                                                                  |
+| `pnpm test`                  | 87 unit tests                                                                                                                                                          |
+| `pnpm test:e2e`              | 14 tests against real Postgres                                                                                                                                         |
+| `pnpm smoke`                 | 68 HTTP assertions                                                                                                                                                     |
+| `node scripts/web-smoke.mjs` | 29 assertions in headless Chrome: 21 routes, signup through the real form, no console errors, dark theme, no overflow at 390px                                         |
+| `pnpm check:models`          | All 12 registry ids resolve on OpenRouter                                                                                                                              |
+| Live OSM campaign            | 5 real Manchester businesses discovered, enriched, verified, analysed and scored                                                                                       |
+| Live Places campaign         | 5 real businesses with ratings and review counts, phones normalised to E.164                                                                                           |
+| Live manual send             | Evidence-grounded message written by a free model, validation passed, `wa.me` link built, marked sent, conversation opened, analytics updated, double-press idempotent |
+
+The AI half of the pipeline was verified against real OpenRouter calls, not
+mocks. `scripts/live-e2e.mjs` reruns the whole thing on demand.
