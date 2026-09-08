@@ -19,3 +19,12 @@ onlyBuiltDependencies:
   - '@swc/core'
 
 dangerouslyAllowAllBuilds: true
+
+# Transitive packages carrying a published advisory that the direct dependency
+# has not yet released a fix for. pnpm 11 reads overrides from here — a `pnpm`
+# block in package.json is ignored, silently apart from an install warning.
+overrides:
+  postcss: '^8.5.23'
+  esbuild: '^0.25.0'
+  vite: '^7.3.6'
+  deepmerge-ts: '^8.0.0'

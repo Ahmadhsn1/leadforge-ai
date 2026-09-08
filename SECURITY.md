@@ -117,19 +117,29 @@ Stated openly so you can judge the risk yourself.
 
 ## Dependency advisories
 
-Runtime dependencies are kept clear of known advisories. `pnpm.overrides` in the
-root `package.json` lifts transitive packages past an advisory when the direct
-dependency has not yet released a fix.
+Runtime and build dependencies are kept clear of known advisories. The full
+tree currently carries none.
 
-Two advisories are knowingly accepted, because the fix is not reachable without
-a framework major and neither is exploitable here:
+Where a direct dependency vendors a package that has an advisory and has not
+released a fix, `overrides` in `pnpm-workspace.yaml` lifts it for the whole
+tree. Four packages are pinned that way today:
 
-| Package              | Comes from                  | Why it is accepted                                                                                                                                                                                                 |
-| -------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `postcss@8.4.31`     | vendored inside `next@15.5` | Runs at build time over this repository's own stylesheets. The advisories need an attacker-controlled `sourceMappingURL` in processed CSS; nothing user-supplied reaches PostCSS. Clears with the Next 16 upgrade. |
-| `deepmerge-ts@7.1.5` | `@prisma/config`            | Merges this repository's own `prisma.config.ts` at CLI start-up. The advisory is stack exhaustion on a recursive object graph; the input is a static local file. Clears when Prisma bumps it.                      |
+| Package        | Pinned to | Why                                                                       |
+| -------------- | --------- | ------------------------------------------------------------------------- |
+| `postcss`      | `^8.5.23` | Next 15 vendors 8.4.31, which has path-traversal and XSS advisories.      |
+| `esbuild`      | `^0.25.0` | Older builds let any website read the dev server's responses.             |
+| `vite`         | `^7.3.6`  | Path traversal in optimised-dep `.map` handling, and an `fs.deny` bypass. |
+| `deepmerge-ts` | `^8.0.0`  | `@prisma/config` pins 7.1.5, which has a stack-exhaustion advisory.       |
 
-If you can demonstrate real reachability for either, that is worth reporting.
+Note that pnpm 11 reads `overrides` from `pnpm-workspace.yaml`. A `pnpm.overrides`
+block in `package.json` is **ignored** — with nothing worse than an install
+warning to tell you — so an override placed there looks applied and is not.
+
+After changing a pinned version, check the whole tree actually moved:
+
+```bash
+grep -oE "^  postcss@[0-9][^:(]*" pnpm-lock.yaml | sort -u
+```
 
 ## Scope
 
