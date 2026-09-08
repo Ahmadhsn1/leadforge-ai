@@ -14,7 +14,7 @@ drafts the message you would actually send.
 [![CodeQL](https://github.com/Ahmadhsn1/leadforge-ai/actions/workflows/codeql.yml/badge.svg)](https://github.com/Ahmadhsn1/leadforge-ai/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg?logo=typescript&logoColor=white)](tsconfig.base.json)
-[![Node](https://img.shields.io/badge/Node-20%2B-5FA04E.svg?logo=node.js&logoColor=white)](.nvmrc)
+[![Node](https://img.shields.io/badge/Node-22%2B-5FA04E.svg?logo=node.js&logoColor=white)](.nvmrc)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 **198 automated checks** · 87 unit · 14 end-to-end · 68 HTTP · 29 in a real browser

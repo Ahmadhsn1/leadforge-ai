@@ -14,7 +14,7 @@ pnpm db:seed
 pnpm dev                      # web :3000, api :4000, worker
 ```
 
-Node 20+, pnpm 11+. If Docker gives you trouble on Windows, see
+Node 22.13+, pnpm 11+ (pnpm 11 refuses to run on Node 20). If Docker gives you trouble on Windows, see
 [`docs/44-RUNNING-WITHOUT-DOCKER.md`](docs/44-RUNNING-WITHOUT-DOCKER.md) — the
 native binaries have no WSL dependency.
 
