@@ -17,7 +17,7 @@
     "@leadforge/shared": "workspace:*",
     "@nestjs/common": "^11.0.1",
     "@nestjs/core": "^11.0.1",
-    "bullmq": "^5.34.10",
+    "bullmq": "^6.3.4",
     "ioredis": "^5.4.2",
     "pino": "^9.6.0",
     "reflect-metadata": "^0.2.2",
