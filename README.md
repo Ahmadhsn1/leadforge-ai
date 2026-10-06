@@ -328,3 +328,11 @@ Business data discovered through the OpenStreetMap source is © OpenStreetMap
 contributors, available under the [ODbL](https://www.openstreetmap.org/copyright).
 Attribution is required wherever it is displayed, and the lead detail screen
 carries it.
+
+## Case study
+
+The engineering decisions, metrics and screenshots for LeadForge AI are written up in the [LeadForge AI case study](https://ahmadhsn1.github.io/work/leadforge-ai/).
+
+Related writing:
+
+- [Do Not Retry an LLM Rate Limit, Reschedule It](https://ahmadhsn1.github.io/blog/llm-rate-limits-bullmq-reschedule/)
