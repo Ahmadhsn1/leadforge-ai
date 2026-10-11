@@ -13,3 +13,8 @@ coverage/
 .DS_Store
 *.log
 packages/database/generated/
+
+# Vercel CLI link state
+.vercel
+.vercel
+.env*
