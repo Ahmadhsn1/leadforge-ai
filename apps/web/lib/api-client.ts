@@ -46,7 +46,12 @@ export class ApiError extends Error {
     if (this.code === 'NETWORK')
       return 'Could not reach the server. Check your connection and try again.';
     if (this.status === 401) return 'Your session has expired. Sign in again to continue.';
-    if (this.status === 403) return 'You do not have permission to do that.';
+    if (this.status === 403) {
+      // A refusal that carries a reason says what to do about it; show that
+      // instead of a generic line the user cannot act on.
+      const reason = (this.details as { reason?: unknown } | undefined)?.reason;
+      return typeof reason === 'string' ? this.message : 'You do not have permission to do that.';
+    }
     if (this.status === 429) return 'Too many requests. Wait a moment and try again.';
     if (this.code === 'PROVIDER_NOT_CONFIGURED') return this.message;
     if (this.status >= 500)

@@ -33,7 +33,8 @@ RUN pnpm --filter @leadforge/database generate \
  && pnpm --filter @leadforge/shared build \
  && pnpm --filter @leadforge/database build \
  && pnpm --filter @leadforge/ai build \
- && pnpm --filter @leadforge/api build \n && pnpm --filter @leadforge/worker build
+ && pnpm --filter @leadforge/api build \
+ && pnpm --filter @leadforge/worker build
 
 # --- runtime --------------------------------------------------------------
 FROM base AS runtime

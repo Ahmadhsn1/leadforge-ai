@@ -60,6 +60,7 @@ export interface MeResponse {
     whatsapp: boolean;
     instagram: boolean;
     email: boolean;
+    billing?: boolean;
   };
 }
 
@@ -555,9 +556,20 @@ export interface IntegrationView {
   enabled: boolean;
   status: string;
   configured: boolean;
+  /** Whose credentials are in use: this workspace's own, or the deployment's. */
+  source?: 'workspace' | 'deployment' | null;
   config: Record<string, unknown>;
   lastCheckedAt: string | null;
   lastError: string | null;
+}
+
+export interface OrganizationView {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  settings: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface UsageView {
@@ -572,6 +584,20 @@ export interface UsageView {
   }[];
   aiUsage: AiUsageView;
 }
+
+export interface BillingView {
+  /** False when the deployment has no payment provider configured. */
+  enabled: boolean;
+  plan: string;
+  status: string;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  hasSubscription: boolean;
+  checkout: { environment: 'sandbox' | 'production'; clientToken: string } | null;
+}
+
+export type PlanChangeResult =
+  { mode: 'checkout'; transactionId: string } | { mode: 'updated'; plan: string };
 
 export interface MemberView {
   id: string;

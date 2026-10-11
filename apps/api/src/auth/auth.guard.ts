@@ -7,7 +7,14 @@ import {
   CustomDecorator,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AppError, ROLE_RANK, OrgRole } from '@leadforge/shared';
+import {
+  AppError,
+  ROLE_RANK,
+  cheapestPlanWith,
+  planHasFeature,
+  OrgRole,
+  PlanFeature,
+} from '@leadforge/shared';
 import { enrichLogContext } from '@/common/logger';
 import { AuthService } from './auth.service';
 import { SESSION_COOKIE, AuthContext, AuthenticatedRequest } from './auth.types';
@@ -19,6 +26,17 @@ export const Public = (): CustomDecorator => SetMetadata(PUBLIC_KEY, true);
 /** Minimum role required for an endpoint. */
 export const ROLES_KEY = 'leadforge:minRole';
 export const RequireRole = (role: OrgRole): CustomDecorator => SetMetadata(ROLES_KEY, role);
+
+/** A plan feature the workspace must have for an endpoint. */
+export const FEATURE_KEY = 'leadforge:planFeature';
+export const RequireFeature = (feature: PlanFeature): CustomDecorator =>
+  SetMetadata(FEATURE_KEY, feature);
+
+const FEATURE_NAMES: Readonly<Partial<Record<PlanFeature, string>>> = {
+  sequences: 'Follow-up sequences are',
+  copilot: 'The conversation copilot is',
+  analytics: 'Analytics exports are',
+};
 
 /**
  * Resolves the session cookie into an AuthContext and enforces the role floor.
@@ -60,6 +78,22 @@ export class AuthGuard implements CanActivate {
     if (minRole && ROLE_RANK[auth.organization.role] < ROLE_RANK[minRole]) {
       throw AppError.forbidden(
         `This action requires the ${minRole} role. Your role in this workspace is ${auth.organization.role}.`,
+      );
+    }
+
+    // The plan is read from the database on every request, so an upgrade or a
+    // lapsed subscription takes effect on the next call, not the next login.
+    const feature = this.reflector.getAllAndOverride<PlanFeature>(FEATURE_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (feature && !planHasFeature(auth.organization.plan, feature)) {
+      const upgrade = cheapestPlanWith(feature);
+      throw new AppError(
+        'QUOTA_EXCEEDED',
+        `${FEATURE_NAMES[feature] ?? 'This feature is'} part of the ${upgrade.label} plan. Upgrade in Settings → Billing to use it.`,
+        { retryable: false, details: { feature, requiredPlan: upgrade.plan } },
       );
     }
 

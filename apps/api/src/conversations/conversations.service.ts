@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppError, HUMAN_TAKEOVER_INTENTS, Channel, ConversationStatus } from '@leadforge/shared';
 import { PrismaService } from '@/common/prisma.service';
 import { EvidenceService } from '@/common/evidence.service';
+import { NotificationService } from '@/common/notification.service';
 import { AiService } from '@/ai/ai.service';
 import { IntelligenceService } from '@/intelligence/intelligence.service';
 import { SequenceService } from '@/outreach/sequence.service';
@@ -27,6 +28,7 @@ export class ConversationsService {
     private readonly sequences: SequenceService,
     private readonly suppression: SuppressionService,
     private readonly outreach: OutreachService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -108,6 +110,17 @@ export class ConversationsService {
       { leadId: input.leadId, conversationId: conversation.id, channel: input.channel },
       'inbound reply recorded',
     );
+
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: input.leadId },
+      select: { canonicalName: true },
+    });
+    const excerpt = input.body.length > 400 ? `${input.body.slice(0, 397)}...` : input.body;
+    this.notifications.notify(input.organizationId, 'newReply', {
+      subject: `${lead?.canonicalName ?? 'A lead'} replied on ${input.channel}`,
+      text: `${lead?.canonicalName ?? 'A lead'} replied:\n\n${excerpt}`,
+      path: `/dashboard/conversations?id=${conversation.id}`,
+    });
 
     return { conversationId: conversation.id, messageId: message.id, isNew: true };
   }

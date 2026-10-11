@@ -10,6 +10,9 @@ import {
   RequestContextMiddleware,
   RequestLoggingInterceptor,
 } from './common/http';
+import { RateLimitMiddleware, RateLimitService } from './common/rate-limit';
+import { NotificationService } from './common/notification.service';
+import { WorkspaceSmtpService } from './integrations/workspace-smtp.service';
 
 import { AuthService } from './auth/auth.service';
 import { AuthController } from './auth/auth.controller';
@@ -56,6 +59,8 @@ import { IntegrationsController } from './integrations/integrations.controller';
 import { MiscController } from './search/misc.controller';
 import { HealthController } from './health/health.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
+import { BillingService } from './billing/billing.service';
+import { BillingController } from './billing/billing.controller';
 
 /**
  * Application root.
@@ -82,15 +87,19 @@ import { WebhooksController } from './webhooks/webhooks.controller';
     MiscController,
     HealthController,
     WebhooksController,
+    BillingController,
   ],
   providers: [
     // Infrastructure
     PrismaService,
+    WorkspaceSmtpService,
     MailService,
+    NotificationService,
     EvidenceService,
     SafeFetchService,
     QueueService,
     AuditService,
+    RateLimitService,
 
     // Identity
     AuthService,
@@ -123,6 +132,7 @@ import { WebhooksController } from './webhooks/webhooks.controller';
     CampaignsService,
     LeadsService,
     AnalyticsService,
+    BillingService,
 
     // Cross-cutting: protected by default, one error shape, one request log.
     { provide: APP_GUARD, useClass: AuthGuard },
@@ -156,6 +166,6 @@ import { WebhooksController } from './webhooks/webhooks.controller';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestContextMiddleware).forRoutes('*');
+    consumer.apply(RequestContextMiddleware, RateLimitMiddleware).forRoutes('*');
   }
 }

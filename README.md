@@ -17,7 +17,7 @@ drafts the message you would actually send.
 [![Node](https://img.shields.io/badge/Node-22%2B-5FA04E.svg?logo=node.js&logoColor=white)](.nvmrc)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**198 automated checks** · 87 unit · 14 end-to-end · 68 HTTP · 29 in a real browser
+**262 automated checks** · 122 unit · 33 end-to-end · 69 HTTP · 38 in a real browser
 
 [Quickstart](#quickstart) · [Architecture](#architecture) · [Screens](#the-product) · [Zero-cost setup](#running-at-zero-cost) · [Docs](#documentation)
 
@@ -242,12 +242,12 @@ pnpm dev              # everything in watch mode
 pnpm build            # packages first, then apps
 pnpm typecheck        # strict, with noUncheckedIndexedAccess
 pnpm lint             # eslint, zero warnings tolerated
-pnpm test             # 87 unit tests
-pnpm test:e2e         # 14 tests against a real database
-pnpm smoke            # 68 HTTP assertions against a running API
+pnpm test             # 122 unit tests
+pnpm test:e2e         # 33 tests against a real database
+pnpm smoke            # 69 HTTP assertions against a running API
 pnpm check:models     # every AI model id still exists on OpenRouter
 
-node scripts/web-smoke.mjs    # 29 assertions in headless Chrome
+node scripts/web-smoke.mjs    # 38 assertions in headless Chrome
 node scripts/live-e2e.mjs     # a real campaign against real providers
 
 pnpm services         # postgres + redis as native binaries (no Docker)
@@ -305,14 +305,15 @@ green while they were broken.
 
 ## Documentation
 
-| Document                                                    | What it covers                                        |
-| ----------------------------------------------------------- | ----------------------------------------------------- |
-| [Implementation notes](docs/43-IMPLEMENTATION-NOTES.md)     | Design departures, bugs found, verification performed |
-| [Running at zero cost](docs/45-RUNNING-AT-ZERO-COST.md)     | The free path, and where it ends                      |
-| [Running without Docker](docs/44-RUNNING-WITHOUT-DOCKER.md) | Native Postgres and Redis on Windows                  |
-| [Deployment](infra/deployment/README.md)                    | Provisioning, configuration, operations               |
-| [Contributing](CONTRIBUTING.md)                             | Setup, the rules that matter, review expectations     |
-| [Security](SECURITY.md)                                     | Reporting, what the code does, known limits           |
+| Document                                                     | What it covers                                        |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| [Implementation notes](docs/43-IMPLEMENTATION-NOTES.md)      | Design departures, bugs found, verification performed |
+| [Production readiness](docs/46-PRODUCTION-READINESS-PLAN.md) | Market, pricing, and what stands before launch        |
+| [Running at zero cost](docs/45-RUNNING-AT-ZERO-COST.md)      | The free path, and where it ends                      |
+| [Running without Docker](docs/44-RUNNING-WITHOUT-DOCKER.md)  | Native Postgres and Redis on Windows                  |
+| [Deployment](infra/deployment/README.md)                     | Provisioning, configuration, operations               |
+| [Contributing](CONTRIBUTING.md)                              | Setup, the rules that matter, review expectations     |
+| [Security](SECURITY.md)                                      | Reporting, what the code does, known limits           |
 
 The full design set lives in [`docs/`](docs/) — 46 documents covering
 discovery, verification, the evidence model, AI routing, scoring, outreach and

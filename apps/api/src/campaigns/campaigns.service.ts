@@ -144,10 +144,12 @@ export class CampaignsService {
       throw AppError.providerNotConfigured('Google Places discovery');
     }
 
-    await this.assertLeadQuota(organizationId);
+    const remainingLeads = await this.assertLeadQuota(organizationId);
 
     const target = campaign.target as { leadLimit?: number };
-    const leadLimit = options.leadLimit ?? target.leadLimit ?? 100;
+    // Capped to what the plan has left: the quota is checked once here, and a
+    // run asking for 500 leads with 3 remaining would otherwise deliver 500.
+    const leadLimit = Math.min(options.leadLimit ?? target.leadLimit ?? 100, remainingLeads);
 
     const run = await this.prisma.campaignRun.create({
       data: {
@@ -283,7 +285,8 @@ export class CampaignsService {
     }
   }
 
-  private async assertLeadQuota(organizationId: string): Promise<void> {
+  /** Throws when the period's lead quota is spent; otherwise returns what is left. */
+  private async assertLeadQuota(organizationId: string): Promise<number> {
     const organization = await this.prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
       select: { plan: true },
@@ -296,13 +299,15 @@ export class CampaignsService {
       },
     });
 
-    if ((counter?.value ?? 0) >= quota.monthlyLeads) {
+    const remaining = quota.monthlyLeads - (counter?.value ?? 0);
+    if (remaining <= 0) {
       throw new AppError(
         'QUOTA_EXCEEDED',
         `This workspace has used all ${quota.monthlyLeads.toLocaleString('en-GB')} leads included in the ${quota.label} plan this month.`,
         { retryable: false },
       );
     }
+    return remaining;
   }
 
   /* ---------------------------------------------------------- serialising */

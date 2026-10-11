@@ -27,7 +27,17 @@ import {
 } from '@/components/ui/dialog';
 import { CardSkeleton, ErrorState } from '@/components/ui/states';
 import { HoverLift, Stagger } from '@/components/ui/motion';
-import { useIntegrations, useUpdateIntegration } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { api, ApiError } from '@/lib/api-client';
+import { qk, useIntegrations, useUpdateIntegration } from '@/lib/queries';
 import { cn, relativeTime } from '@/lib/utils';
 import type { IntegrationView } from '@/types/api';
 
@@ -115,6 +125,7 @@ const PROVIDERS: readonly ProviderMeta[] = [
 export default function IntegrationsPage() {
   const { data, isLoading, isError, error, refetch } = useIntegrations();
   const [editing, setEditing] = React.useState<ProviderMeta | null>(null);
+  const [connectingEmail, setConnectingEmail] = React.useState(false);
 
   const byProvider = React.useMemo(() => {
     const map = new Map<string, IntegrationView>();
@@ -145,10 +156,17 @@ export default function IntegrationsPage() {
               meta={meta}
               integration={byProvider.get(meta.provider)}
               onConfigure={() => setEditing(meta)}
+              onConnectEmail={() => setConnectingEmail(true)}
             />
           ))}
         </Stagger>
       )}
+
+      <EmailAccountDialog
+        open={connectingEmail}
+        integration={byProvider.get('email')}
+        onClose={() => setConnectingEmail(false)}
+      />
 
       <ConfigureDialog
         meta={editing}
@@ -163,10 +181,12 @@ function IntegrationCard({
   meta,
   integration,
   onConfigure,
+  onConnectEmail,
 }: {
   meta: ProviderMeta;
   integration: IntegrationView | undefined;
   onConfigure: () => void;
+  onConnectEmail: () => void;
 }) {
   const update = useUpdateIntegration();
   const Icon = meta.icon;
@@ -232,7 +252,23 @@ function IntegrationCard({
           </p>
         ) : null}
 
-        {!configured ? (
+        {meta.provider === 'email' ? (
+          <p className="mt-2.5 rounded-md border border-dashed border-border bg-raised px-2.5 py-2 text-2xs text-pretty">
+            {integration?.source === 'workspace' ? (
+              <>
+                Sending from{' '}
+                <span className="font-medium break-anywhere">
+                  {String(integration.config.fromAddress ?? 'your mail account')}
+                </span>
+                , through your own mail server.
+              </>
+            ) : integration?.source === 'deployment' ? (
+              'Sending through the mail account this deployment was set up with. Connect your own so messages come from your address.'
+            ) : (
+              'Connect your mail account to send email outreach from your own address.'
+            )}
+          </p>
+        ) : !configured ? (
           <div className="mt-2.5 rounded-md border border-dashed border-border bg-raised px-2.5 py-2">
             <p className="text-2xs font-medium">
               Set these environment variables on the API and worker services:
@@ -265,7 +301,12 @@ function IntegrationCard({
           </span>
 
           <span className="flex items-center gap-1">
-            {meta.configFields.length > 0 ? (
+            {meta.provider === 'email' ? (
+              <Button variant="ghost" size="xs" onClick={onConnectEmail}>
+                <Mail aria-hidden="true" />
+                {integration?.source === 'workspace' ? 'Change account' : 'Connect account'}
+              </Button>
+            ) : meta.configFields.length > 0 ? (
               <Button variant="ghost" size="xs" onClick={onConfigure}>
                 <Settings2 aria-hidden="true" />
                 Configure
@@ -281,6 +322,276 @@ function IntegrationCard({
         </div>
       </article>
     </HoverLift>
+  );
+}
+
+const SMTP_PORTS = [
+  { value: '587', label: '587 — STARTTLS (most providers)' },
+  { value: '465', label: '465 — TLS' },
+  { value: '2525', label: '2525 — alternative' },
+  { value: '25', label: '25 — unencrypted relay' },
+];
+
+/**
+ * Connects the workspace's own mail account. The server tries the details
+ * before saving them, so a wrong password is reported here rather than on the
+ * first message to a prospect.
+ */
+function EmailAccountDialog({
+  open,
+  integration,
+  onClose,
+}: {
+  open: boolean;
+  integration: IntegrationView | undefined;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const connected = integration?.source === 'workspace';
+
+  const [form, setForm] = React.useState({
+    host: '',
+    port: '587',
+    username: '',
+    password: '',
+    fromAddress: '',
+    fromName: '',
+  });
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [formError, setFormError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [removing, setRemoving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const config = (integration?.config ?? {}) as Record<string, unknown>;
+    setForm({
+      host: String(config.host ?? ''),
+      port: String(config.port ?? '587'),
+      username: String(config.username ?? ''),
+      // Never prefilled: the saved password is not sent back to the browser.
+      password: '',
+      fromAddress: String(config.fromAddress ?? ''),
+      fromName: String(config.fromName ?? ''),
+    });
+    setErrors({});
+    setFormError(null);
+  }, [open, integration]);
+
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((prev) => ({ ...prev, [key]: event.target.value }));
+
+  async function refresh() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: qk.integrations }),
+      queryClient.invalidateQueries({ queryKey: qk.me }),
+    ]);
+  }
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError(null);
+
+    const next: Record<string, string> = {};
+    if (!form.host.trim()) next.host = 'Enter your mail server, such as smtp.example.com.';
+    if (!form.username.trim()) next.username = 'Enter the username you sign in to it with.';
+    if (!form.password) next.password = 'Enter the password or app password.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.fromAddress.trim())) {
+      next.fromAddress = 'Enter the address messages should come from.';
+    }
+    setErrors(next);
+    const first = Object.keys(next)[0];
+    if (first) {
+      document.getElementById(`smtp-${first}`)?.focus();
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.put('/integrations/email/credentials', {
+        host: form.host.trim(),
+        port: Number(form.port),
+        username: form.username.trim(),
+        password: form.password,
+        fromAddress: form.fromAddress.trim().toLowerCase(),
+        ...(form.fromName.trim() ? { fromName: form.fromName.trim() } : {}),
+      });
+      await refresh();
+      toast.success('Mail account connected', {
+        description: `Email outreach will be sent from ${form.fromAddress.trim()}.`,
+      });
+      onClose();
+    } catch (error) {
+      setFormError(
+        error instanceof ApiError ? error.userMessage : 'Could not reach the server. Try again.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    setRemoving(true);
+    try {
+      await api.delete('/integrations/email/credentials');
+      await refresh();
+      toast.success('Mail account disconnected');
+      onClose();
+    } catch (error) {
+      setFormError(error instanceof ApiError ? error.userMessage : 'Could not disconnect.');
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <Dialog open onOpenChange={(next) => (next ? undefined : onClose())}>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>
+            {connected ? 'Change mail account' : 'Connect your mail account'}
+          </DialogTitle>
+          <DialogDescription>
+            Email outreach is sent through your own mail server, so it comes from your address. The
+            password is encrypted before it is stored and is never shown again.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form id="smtp-form" onSubmit={save} className="space-y-3" noValidate>
+          {formError ? (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {formError}
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <Field label="Mail server" htmlFor="smtp-host" error={errors.host} required>
+              <Input
+                id="smtp-host"
+                value={form.host}
+                onChange={set('host')}
+                placeholder="smtp.example.com"
+                autoComplete="off"
+                spellCheck={false}
+                invalid={Boolean(errors.host)}
+                required
+              />
+            </Field>
+            <Field label="Port" htmlFor="smtp-port">
+              <Select
+                value={form.port}
+                onValueChange={(port) => setForm((prev) => ({ ...prev, port }))}
+              >
+                <SelectTrigger id="smtp-port" className="sm:w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SMTP_PORTS.map((port) => (
+                    <SelectItem key={port.value} value={port.value}>
+                      {port.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
+          <Field label="Username" htmlFor="smtp-username" error={errors.username} required>
+            <Input
+              id="smtp-username"
+              value={form.username}
+              onChange={set('username')}
+              autoComplete="off"
+              spellCheck={false}
+              invalid={Boolean(errors.username)}
+              required
+            />
+          </Field>
+
+          <Field
+            label="Password"
+            htmlFor="smtp-password"
+            error={errors.password}
+            hint={
+              connected
+                ? 'Enter it again to save changes.'
+                : 'For Gmail or Outlook, use an app password rather than your normal one.'
+            }
+            required
+          >
+            <Input
+              id="smtp-password"
+              type="password"
+              value={form.password}
+              onChange={set('password')}
+              autoComplete="new-password"
+              invalid={Boolean(errors.password)}
+              required
+            />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label="From address"
+              htmlFor="smtp-fromAddress"
+              error={errors.fromAddress}
+              required
+            >
+              <Input
+                id="smtp-fromAddress"
+                type="email"
+                inputMode="email"
+                value={form.fromAddress}
+                onChange={set('fromAddress')}
+                placeholder="alex@youragency.com"
+                invalid={Boolean(errors.fromAddress)}
+                required
+              />
+            </Field>
+            <Field label="From name" htmlFor="smtp-fromName" hint="Optional.">
+              <Input
+                id="smtp-fromName"
+                value={form.fromName}
+                onChange={set('fromName')}
+                placeholder="Alex at Your Agency"
+              />
+            </Field>
+          </div>
+        </form>
+
+        <DialogFooter>
+          {connected ? (
+            <Button
+              variant="ghost"
+              className="mr-auto text-destructive hover:text-destructive"
+              loading={removing}
+              disabled={saving}
+              onClick={remove}
+            >
+              Disconnect
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={onClose} disabled={saving || removing}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="smtp-form"
+            variant="primary"
+            loading={saving}
+            disabled={removing}
+          >
+            <Check aria-hidden="true" />
+            Test and save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { AppError, DEFAULT_SEQUENCE_STEPS, Channel, DraftKind } from '@leadforge/shared';
+import {
+  AppError,
+  DEFAULT_SEQUENCE_STEPS,
+  planHasFeature,
+  Channel,
+  DraftKind,
+} from '@leadforge/shared';
 import { PrismaService } from '@/common/prisma.service';
 import { logger } from '@/common/logger';
 
@@ -145,6 +151,14 @@ export class SequenceService {
     channel: Channel,
     campaignSequenceId?: string | null,
   ) {
+    // Automated follow-ups are a paid feature. The first message still sends
+    // on every plan; it just is not chased.
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { plan: true },
+    });
+    if (!organization || !planHasFeature(organization.plan, 'sequences')) return null;
+
     const sequence = campaignSequenceId
       ? await this.prisma.outreachSequence.findFirst({
           where: { id: campaignSequenceId, organizationId, active: true },

@@ -16,6 +16,8 @@ export interface RecipientValidation {
 }
 
 export interface SendRequest {
+  /** The workspace sending. Channels with per-workspace credentials need it. */
+  readonly organizationId: string;
   readonly recipient: string;
   readonly body: string;
   readonly subject?: string | null;
@@ -23,6 +25,12 @@ export interface SendRequest {
   readonly idempotencyKey: string;
   readonly leadId: string;
   readonly draftId: string;
+  /** Where the recipient can opt out. Channels that can carry a link include it. */
+  readonly unsubscribeUrl?: string;
+  /** The endpoint a mail client POSTs to for one-click unsubscribe (RFC 8058). */
+  readonly unsubscribePostUrl?: string;
+  /** Address replies should go to, when inbound capture is set up. */
+  readonly replyTo?: string;
 }
 
 export interface SendResult {
@@ -57,6 +65,8 @@ export interface WebhookVerification {
 export interface ChannelAdapter {
   readonly channel: Channel;
   isConfigured(): boolean;
+  /** For channels a workspace can connect itself; overrides `isConfigured`. */
+  isConfiguredFor?(organizationId: string): Promise<boolean>;
   /** Checks a recipient before anything is queued. */
   validateRecipient(recipient: string | null | undefined, country?: string): RecipientValidation;
   send(request: SendRequest): Promise<SendResult>;

@@ -13,8 +13,7 @@
 import puppeteer from 'puppeteer-core';
 
 const WEB = process.env.WEB_URL ?? 'http://localhost:3000';
-const CHROME =
-  process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const CHROME = process.env.CHROME_PATH ?? 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const stamp = Date.now();
 
 let passed = 0;
@@ -43,7 +42,9 @@ let consoleErrors = [];
 page.on('console', (msg) => {
   if (msg.type() === 'error') consoleErrors.push(msg.text().slice(0, 200));
 });
-page.on('pageerror', (err) => consoleErrors.push(`pageerror: ${String(err.message).slice(0, 200)}`));
+page.on('pageerror', (err) =>
+  consoleErrors.push(`pageerror: ${String(err.message).slice(0, 200)}`),
+);
 
 /** Navigates and waits for React to have painted something real. */
 async function visit(path) {
@@ -57,20 +58,45 @@ async function visit(path) {
 try {
   console.log('\nPublic pages');
   for (const [path, needle] of [
+    ['/', 'Start free'],
+    ['/pricing', 'Agency'],
+    ['/legal/terms', 'Terms of service'],
+    ['/legal/privacy', 'Privacy policy'],
+    ['/unsubscribe', 'incomplete'],
+    ['/invite', 'invitation'],
+    ['/verify-email', 'link'],
     ['/login', 'Sign in'],
     ['/signup', 'Create'],
     ['/forgot-password', 'password'],
   ]) {
     const text = await visit(path);
-    check(`${path} renders "${needle}"`, text.toLowerCase().includes(needle.toLowerCase()));
+    const fatal = consoleErrors.filter((e) => !/favicon|404|Failed to load resource/i.test(e));
+    check(
+      `${path} renders "${needle}"`,
+      text.toLowerCase().includes(needle.toLowerCase()) && fatal.length === 0,
+      fatal[0],
+    );
   }
+
+  // The public pages are what a visitor on a phone sees first.
+  await page.setViewport({ width: 390, height: 844 });
+  for (const path of ['/', '/pricing']) {
+    await visit(path);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    check(`${path} has no horizontal scroll at 390px`, overflow <= 1, `overflow ${overflow}px`);
+  }
+  await page.setViewport({ width: 1440, height: 900 });
 
   console.log('\nSign up through the real UI');
   await visit('/signup');
   const email = `web+${stamp}@leadforge.test`;
   // Fill by field name so the test breaks if the form contract changes.
   await page.type('input[name="name"], input[id="name"]', 'Web Smoke').catch(() => {});
-  await page.type('input[name="organizationName"], input[id="organizationName"]', `Web ${stamp}`).catch(() => {});
+  await page
+    .type('input[name="organizationName"], input[id="organizationName"]', `Web ${stamp}`)
+    .catch(() => {});
   await page.type('input[type="email"]', email);
   await page.type('input[type="password"]', 'WebSmoke!2026pass');
   await Promise.all([
@@ -134,7 +160,7 @@ try {
       sidebar: Boolean(document.querySelector('aside, nav')),
     };
   });
-  check('dark surface applied', design.bg !== 'rgba(0, 0, 0, 0)' && design.bg !== '' , design.bg);
+  check('dark surface applied', design.bg !== 'rgba(0, 0, 0, 0)' && design.bg !== '', design.bg);
   check('custom font applied', /inter|geist|system-ui|sans/i.test(design.font), design.font);
   check('navigation chrome present', design.sidebar);
 

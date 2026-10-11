@@ -7,6 +7,8 @@ import { QueueService } from '@/jobs/queue.service';
 import { ConversationsService } from '@/conversations/conversations.service';
 import { OutreachService } from '@/outreach/outreach.service';
 import { statusForEvent } from '@/outreach/outreach.state';
+import { parseReplyAddress, stripQuotedReply } from '@/outreach/reply-address';
+import { parseInboundEmail } from './inbound-email';
 import { Public } from '@/auth/auth.guard';
 import { logger } from '@/common/logger';
 import type { NormalizedEvent } from '@/outreach/adapters/channel-adapter';
@@ -59,6 +61,104 @@ export class WebhooksController {
 
     logger('webhooks').info({ provider }, 'webhook subscription verified');
     return challenge;
+  }
+
+  /**
+   * Replies to outreach email, forwarded by an inbound-parse provider.
+   *
+   * Declared before the `:provider` route so it is matched first. The caller
+   * proves itself with the shared secret (as a header, or as the password of
+   * HTTP basic auth, which is how Postmark and Mailgun attach credentials).
+   * Which message a reply answers comes from the signed Reply-To address it
+   * was sent to — never from the From line, which is trivially forged.
+   */
+  @Public()
+  @Post('inbound-email')
+  @HttpCode(200)
+  async inboundEmail(
+    @Headers() headers: Record<string, string | undefined>,
+    @Body() body: unknown,
+  ): Promise<{ received: true }> {
+    const secret = env().INBOUND_EMAIL_SECRET;
+    if (!secret || !this.inboundSecretMatches(headers, secret)) {
+      logger('webhooks').warn('rejected unauthenticated inbound email');
+      return { received: true };
+    }
+
+    const mail = parseInboundEmail(body);
+    if (!mail) return { received: true };
+
+    const draftId = parseReplyAddress(mail.to, env().AUTH_SECRET);
+    const draft = draftId
+      ? await this.prisma.messageDraft.findUnique({
+          where: { id: draftId },
+          select: { id: true, leadId: true, organizationId: true },
+        })
+      : null;
+
+    const delivery = await this.prisma.webhookDelivery
+      .create({
+        data: {
+          provider: 'email',
+          externalId: mail.messageId,
+          signatureValid: true,
+          organizationId: draft?.organizationId ?? null,
+          // Headers and addresses only: the body is stored once, on the message.
+          payload: { from: mail.from, to: mail.to, subject: mail.subject } as never,
+          error: draft ? null : 'Not addressed to a known reply address.',
+        },
+      })
+      .catch(() => null);
+
+    // No delivery row means this message id was already processed.
+    if (!delivery || !draft) return { received: true };
+
+    try {
+      const receivedAt = new Date();
+      await this.ingestReply(
+        { id: draft.leadId, organizationId: draft.organizationId },
+        'email',
+        'email',
+        {
+          type: 'replied',
+          providerMessageId: null,
+          providerEventId: mail.messageId,
+          inbound: {
+            from: mail.from,
+            body: stripQuotedReply(mail.text).slice(0, 10_000),
+            externalThreadId: mail.from,
+            receivedAt,
+          },
+          occurredAt: receivedAt,
+          raw: { subject: mail.subject },
+        },
+        delivery.id,
+      );
+      await this.prisma.webhookDelivery.update({
+        where: { id: delivery.id },
+        data: { processedAt: new Date() },
+      });
+    } catch (error) {
+      logger('webhooks').error({ err: error }, 'failed to process inbound email');
+    }
+
+    return { received: true };
+  }
+
+  private inboundSecretMatches(
+    headers: Record<string, string | undefined>,
+    secret: string,
+  ): boolean {
+    const direct = headers['x-inbound-secret'];
+    if (direct && safeEqualOrFalse(direct, secret)) return true;
+
+    const authorization = headers.authorization;
+    if (authorization?.startsWith('Basic ')) {
+      const decoded = Buffer.from(authorization.slice(6), 'base64').toString('utf8');
+      const password = decoded.slice(decoded.indexOf(':') + 1);
+      return safeEqualOrFalse(password, secret);
+    }
+    return false;
   }
 
   @Public()
@@ -172,6 +272,20 @@ export class WebhooksController {
       );
       return;
     }
+
+    await this.ingestReply(lead, provider, channel, event, deliveryId);
+  }
+
+  /** Records a reply against a known lead and queues its classification. */
+  private async ingestReply(
+    lead: { id: string; organizationId: string },
+    provider: string,
+    channel: Channel,
+    event: NormalizedEvent,
+    deliveryId: string,
+  ): Promise<void> {
+    const inbound = event.inbound;
+    if (!inbound) return;
 
     const result = await this.conversations.recordInbound({
       organizationId: lead.organizationId,
@@ -303,7 +417,13 @@ export class WebhooksController {
 
     if (channel === 'whatsapp') {
       const e164 = from.startsWith('+') ? from : `+${from}`;
-      return this.prisma.lead.findFirst({ where: { phoneKey: e164 } });
+      // The same business can be a lead in several workspaces. A reply belongs
+      // to whoever messaged them most recently, not to whichever row the
+      // database happens to return first.
+      return this.prisma.lead.findFirst({
+        where: { phoneKey: e164, lastContactedAt: { not: null } },
+        orderBy: { lastContactedAt: 'desc' },
+      });
     }
 
     if (channel === 'instagram') {

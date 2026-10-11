@@ -61,6 +61,15 @@ export async function createWorkerContext(): Promise<WorkerContext> {
   });
   app.enableShutdownHooks();
 
+  return contextFrom(app);
+}
+
+/**
+ * Resolves the worker's services from an already-running application. The
+ * single-process entry point uses this to run the processors inside the same
+ * instance that serves HTTP, instead of booting a second module graph.
+ */
+export function contextFrom(app: INestApplicationContext): WorkerContext {
   return {
     app,
     prisma: app.get(PrismaService),

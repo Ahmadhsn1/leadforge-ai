@@ -13,7 +13,7 @@ import {
   trimmed,
 } from '@leadforge/shared';
 import { zodBody, zodQuery } from '@/common/http';
-import { Auth, OrgId, RequireRole } from '@/auth/auth.guard';
+import { Auth, OrgId, Public, RequireFeature, RequireRole } from '@/auth/auth.guard';
 import { PrismaService } from '@/common/prisma.service';
 import { AuditService } from '@/organizations/audit.service';
 import { LeadsService } from '@/leads/leads.service';
@@ -197,6 +197,28 @@ export class OutreachController {
     return this.leads.serializeDraft(draft, lead.canonicalName, null);
   }
 
+  /* ------------------------------------------------------- unsubscribe */
+
+  /**
+   * Opt-out, reached from the link in an outreach email. Takes the token from
+   * the query (a mail client's one-click POST) or the body (the confirm page).
+   * Always answers the same way; see `OutreachService.unsubscribe`.
+   */
+  @Public()
+  @Post('unsubscribe')
+  @HttpCode(200)
+  async unsubscribe(
+    @Query('token') queryToken: unknown,
+    @Body() body: { token?: unknown } | undefined,
+  ): Promise<{ ok: true }> {
+    // Either may be an array if the parameter was repeated; only a string is a token.
+    const token = [queryToken, body?.token].find(
+      (value): value is string => typeof value === 'string',
+    );
+    await this.outreach.unsubscribe(token);
+    return { ok: true };
+  }
+
   /* --------------------------------------------------------- sequences */
 
   @Get('sequences')
@@ -206,6 +228,7 @@ export class OutreachController {
 
   @Post('sequences')
   @RequireRole('admin')
+  @RequireFeature('sequences')
   async createSequence(
     @Auth() auth: AuthContext,
     @Body(zodBody(createSequenceSchema)) body: z.infer<typeof createSequenceSchema>,

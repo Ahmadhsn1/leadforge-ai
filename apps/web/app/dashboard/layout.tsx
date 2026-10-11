@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Topbar } from '@/components/layout/topbar';
+import { UsageBanner } from '@/components/layout/usage-banner';
 import { CommandPalette } from '@/components/layout/command-palette';
 import { Dialog, SheetContent } from '@/components/ui/dialog';
 import { DialogTitle } from '@/components/ui/dialog';
@@ -104,6 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar notifications={notifications.data} />
+        <UsageBanner usage={usage.data} />
         <main id="main" className="flex-1 focus-visible:outline-none" tabIndex={-1}>
           {/* Pages read filters from the URL, so they render on demand behind a
               boundary and show their skeleton while the segment loads. */}

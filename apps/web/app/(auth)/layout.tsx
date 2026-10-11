@@ -25,8 +25,19 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           </div>
         </div>
         <p className="text-2xs text-muted-foreground">
-          By continuing you agree that outreach you send through LeadForge complies with the
-          messaging rules of each connected platform and the contact laws of your market.
+          By continuing you agree to the{' '}
+          <Link href="/legal/terms" className="underline underline-offset-2 hover:text-foreground">
+            terms
+          </Link>{' '}
+          and{' '}
+          <Link
+            href="/legal/privacy"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            privacy policy
+          </Link>
+          , and that outreach you send through LeadForge complies with the messaging rules of each
+          connected platform and the contact laws of your market.
         </p>
       </div>
 

@@ -71,10 +71,11 @@ export class HealthController {
       },
       {
         name: 'discovery_source',
-        status: caps.googlePlaces ? 'ok' : 'degraded',
+        // OpenStreetMap needs no key, so discovery works either way.
+        status: 'ok',
         detail: caps.googlePlaces
-          ? 'Google Places API key present.'
-          : 'GOOGLE_MAPS_API_KEY is not set. Campaigns cannot discover new businesses.',
+          ? 'OpenStreetMap and Google Places are both available.'
+          : 'OpenStreetMap is available. Set GOOGLE_MAPS_API_KEY to add Google Places, which carries ratings and review counts.',
         latencyMs: null,
       },
       {

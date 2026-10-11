@@ -119,6 +119,29 @@ export const envSchema = z.object({
   SMTP_PASSWORD: optionalString,
   SMTP_FROM: optionalString,
 
+  /**
+   * Inbound email, for capturing replies to outreach. `INBOUND_EMAIL_DOMAIN`
+   * is a domain whose mail an inbound-parse provider (Postmark, Mailgun,
+   * SendGrid) forwards to `/webhooks/inbound-email`; the secret is what that
+   * provider presents. Both must be set for reply capture to be on.
+   */
+  INBOUND_EMAIL_DOMAIN: optionalString,
+  INBOUND_EMAIL_SECRET: optionalString,
+
+  /**
+   * Paddle Billing. Paddle is the merchant of record: it takes the payment,
+   * handles sales tax and VAT, and tells us about subscriptions by webhook.
+   * Self-serve upgrades are available only when every value here is set.
+   */
+  PADDLE_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+  PADDLE_API_KEY: optionalString,
+  PADDLE_WEBHOOK_SECRET: optionalString,
+  /** Client-side token for Paddle.js. Safe to expose to the browser. */
+  PADDLE_CLIENT_TOKEN: optionalString,
+  PADDLE_PRICE_STARTER: optionalString,
+  PADDLE_PRICE_GROWTH: optionalString,
+  PADDLE_PRICE_AGENCY: optionalString,
+
   S3_ENDPOINT: optionalString,
   S3_REGION: z.string().default('auto'),
   S3_BUCKET: optionalString,
@@ -135,6 +158,8 @@ export const envSchema = z.object({
 
   RATE_LIMIT_WINDOW_MS: int(60_000),
   RATE_LIMIT_MAX: int(300),
+  /** Per-address budget for login, signup and the token endpoints. */
+  RATE_LIMIT_AUTH_MAX: int(20),
 });
 
 export type Env = z.infer<typeof envSchema>;
