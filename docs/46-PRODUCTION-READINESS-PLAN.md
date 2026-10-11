@@ -91,14 +91,14 @@ page, privacy-friendly analytics on the public pages, a support address.
 
 ## Phase 4 — Close the loop on outreach ✅ (code) / ⏳ (provider setup)
 
-| Gap                                     | Fix                                                                                | Validation                                                                           |
-| --------------------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| No unsubscribe link in outreach email   | Signed opt-out link in the body, RFC 8058 one-click headers, `/unsubscribe` page   | Unit: token forgery. E2E: opt-out blocks a send                                      |
-| Email replies were never captured       | Signed Reply-To address → `POST /webhooks/inbound-email` → the existing reply path | Unit: address, quote stripping. E2E: Postmark-shaped payload, replay, forged address |
-| Notification preferences sent nothing   | `NotificationService` emails verified members on a reply, honouring preferences    | Typecheck; needs SMTP to observe                                                     |
-| WhatsApp replies could cross workspaces | A reply goes to the workspace that messaged that number most recently              | Typecheck                                                                            |
-| WhatsApp cold outreach needs templates  | **Not built.** Needs a Meta-approved template to build against                     | —                                                                                    |
-| Transactional email was plain text only | HTML version of verification, reset and invite email, with the text version kept   | Unit: content, escaping                                                              |
+| Gap                                     | Fix                                                                                                                                  | Validation                                                                           |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| No unsubscribe link in outreach email   | Signed opt-out link in the body, RFC 8058 one-click headers, `/unsubscribe` page                                                     | Unit: token forgery. E2E: opt-out blocks a send                                      |
+| Email replies were never captured       | Signed Reply-To address → `POST /webhooks/inbound-email` → the existing reply path                                                   | Unit: address, quote stripping. E2E: Postmark-shaped payload, replay, forged address |
+| Notification preferences sent nothing   | `NotificationService` emails verified members on a reply, honouring preferences                                                      | Typecheck; needs SMTP to observe                                                     |
+| WhatsApp replies could cross workspaces | A reply goes to the workspace that messaged that number most recently                                                                | Typecheck                                                                            |
+| WhatsApp cold outreach needs templates  | First messages go through an approved template (`WHATSAPP_TEMPLATE_NAME`); free-form text is used only inside an open 24-hour window | Unit: payload shape, parameter sanitising. Needs an approved template to observe     |
+| Transactional email was plain text only | HTML version of verification, reset and invite email, with the text version kept                                                     | Unit: content, escaping                                                              |
 
 Reply capture needs an inbound-parse provider and a domain before it does
 anything: set `INBOUND_EMAIL_DOMAIN` and `INBOUND_EMAIL_SECRET`. Postmark's JSON
@@ -124,11 +124,11 @@ risk rather than eliminating it.
 
 ## Phase 6 — Operate it ⏳
 
-| Gap                               | Plan                                                        | Validation                   |
-| --------------------------------- | ----------------------------------------------------------- | ---------------------------- |
-| No error tracking                 | Sentry, or the OTLP exporter already wired in config        | A forced error shows up      |
-| No backups documented             | Managed Postgres with point-in-time recovery; restore drill | A restore actually performed |
-| Worker has no free always-on host | Budget for one small paid instance                          | —                            |
+| Gap                               | Plan                                                                                                             | Validation                                               |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| No error tracking                 | `ERROR_WEBHOOK_URL`: server errors and dead-lettered jobs are posted to a chat webhook, rate-limited per problem | Unit: throttling, formatting. Needs a webhook to observe |
+| No backups documented             | Managed Postgres with point-in-time recovery; restore drill                                                      | A restore actually performed                             |
+| Worker has no free always-on host | Budget for one small paid instance                                                                               | —                                                        |
 
 CI already runs the unit, E2E, HTTP-smoke and browser-smoke suites on every
 push; the browser smoke now covers the public pages too.

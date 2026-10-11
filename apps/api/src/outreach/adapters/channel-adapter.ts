@@ -29,6 +29,12 @@ export interface SendRequest {
   readonly unsubscribeUrl?: string;
   /** The endpoint a mail client POSTs to for one-click unsubscribe (RFC 8058). */
   readonly unsubscribePostUrl?: string;
+  /**
+   * Whether the recipient has written to us on this channel in the last 24
+   * hours. Channels that only allow free-form messages inside that window
+   * (WhatsApp) use it to choose between plain text and an approved template.
+   */
+  readonly conversationWindowOpen?: boolean;
   /** Address replies should go to, when inbound capture is set up. */
   readonly replyTo?: string;
 }
