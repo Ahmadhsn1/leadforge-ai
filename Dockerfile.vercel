@@ -61,4 +61,6 @@ EXPOSE 8080
 
 # Migrations are applied before the server accepts traffic. `migrate deploy`
 # is idempotent and takes an advisory lock, so concurrent cold starts are safe.
-CMD ["sh", "-c", "node packages/database/node_modules/prisma/build/index.js migrate deploy --schema packages/database/prisma/schema.prisma && node apps/worker/dist/server.js"]
+# It runs over the direct connection where one is provided: a pooled
+# (PgBouncer) connection cannot hold the lock migrations rely on.
+CMD ["sh", "-c", "DATABASE_URL=\"${DATABASE_URL_UNPOOLED:-$DATABASE_URL}\" node packages/database/node_modules/prisma/build/index.js migrate deploy --schema packages/database/prisma/schema.prisma && node apps/worker/dist/server.js"]
