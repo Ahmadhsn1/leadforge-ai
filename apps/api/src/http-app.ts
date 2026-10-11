@@ -38,8 +38,13 @@ function configureHttpApp(app: NestExpressApplication): void {
 
   app.use(
     helmet({
-      // The API serves JSON only; CSP belongs to the web app.
-      contentSecurityPolicy: false,
+      // The API serves JSON, never a document. The right policy for that is
+      // the strictest one: if a response were ever rendered as a page, it
+      // could load nothing and be framed by nobody.
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+      },
       crossOriginResourcePolicy: { policy: 'same-site' },
       hsts:
         config.APP_ENV === 'production' ? { maxAge: 15_552_000, includeSubDomains: true } : false,
