@@ -41,6 +41,18 @@ export const inviteMemberSchema = z.object({
 });
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 
+/**
+ * Accepting an invite. `name` and `password` create the account when the
+ * invited address has none; an existing account proves itself with its
+ * current `password` unless it is already signed in.
+ */
+export const acceptInviteSchema = z.object({
+  token: z.string().min(20).max(200),
+  name: trimmed(120).optional(),
+  password: z.string().min(1).max(200).optional(),
+});
+export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
+
 export const updateMemberSchema = z.object({ role: z.enum(ORG_ROLES) });
 
 export const switchOrganizationSchema = z.object({ organizationId: z.string().min(1) });

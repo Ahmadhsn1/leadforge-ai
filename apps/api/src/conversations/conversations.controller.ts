@@ -10,7 +10,7 @@ import {
   updateConversationSchema,
 } from '@leadforge/shared';
 import { zodBody, zodQuery } from '@/common/http';
-import { Auth, OrgId, RequireRole } from '@/auth/auth.guard';
+import { Auth, OrgId, RequireFeature, RequireRole } from '@/auth/auth.guard';
 import { PrismaService } from '@/common/prisma.service';
 import { AuditService } from '@/organizations/audit.service';
 import { LeadsService } from '@/leads/leads.service';
@@ -160,6 +160,7 @@ export class ConversationsController {
 
   @Post(':id/suggest-response')
   @RequireRole('member')
+  @RequireFeature('copilot')
   @HttpCode(200)
   async suggest(
     @OrgId() organizationId: string,

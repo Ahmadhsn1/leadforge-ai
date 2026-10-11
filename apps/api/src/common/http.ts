@@ -196,11 +196,10 @@ export function zodQuery<T>(schema: ZodSchema<T>): ZodValidationPipe<T> {
 
 /** Records the caller's IP for audit and rate limiting, honouring proxies. */
 export function clientIp(req: Request): string | undefined {
-  const forwarded = req.header('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
+  // `trust proxy` is set in main.ts, so Express has already resolved the
+  // address from the hop we trust. Reading the leftmost X-Forwarded-For entry
+  // directly would let any caller choose the address they are limited and
+  // audited under.
   return req.ip ?? req.socket.remoteAddress ?? undefined;
 }
 

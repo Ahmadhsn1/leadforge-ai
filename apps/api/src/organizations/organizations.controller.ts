@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { z } from 'zod';
 import {
   AppError,
@@ -15,18 +28,22 @@ import {
 } from '@leadforge/shared';
 import { newToken, sha256 } from '@leadforge/shared/server';
 import { currentPeriod } from '@leadforge/database';
+import type { Prisma } from '@leadforge/database';
 import { zodBody, zodQuery } from '@/common/http';
 import { PrismaService } from '@/common/prisma.service';
 import { MailService } from '@/common/mail.service';
 import { Auth, OrgId, RequireRole } from '@/auth/auth.guard';
 import { AnalyticsService } from '@/analytics/analytics.service';
 import { AuditService } from './audit.service';
-import type { AuthContext } from '@/auth/auth.types';
+import { logger } from '@/common/logger';
+import { SESSION_COOKIE, AuthContext } from '@/auth/auth.types';
 
 const updateOrganizationSchema = z.object({
   name: trimmed(120).optional(),
   settings: z.record(jsonValueSchema).optional(),
 });
+
+const deleteOrganizationSchema = z.object({ confirmName: z.string().min(1).max(200) });
 
 @Controller()
 export class OrganizationsController {
@@ -39,17 +56,49 @@ export class OrganizationsController {
 
   /* ------------------------------------------------------- organization */
 
+  @Get('organizations/current')
+  async current(@OrgId() organizationId: string) {
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+    });
+    return {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+      plan: organization.plan,
+      settings: organization.settings,
+      createdAt: organization.createdAt.toISOString(),
+    };
+  }
+
   @Patch('organizations/current')
   @RequireRole('admin')
   async update(
     @Auth() auth: AuthContext,
     @Body(zodBody(updateOrganizationSchema)) body: z.infer<typeof updateOrganizationSchema>,
   ) {
+    // Settings are one JSON document shared by several screens. Merge rather
+    // than replace, or saving the workspace form would erase the notification
+    // preferences that live beside it.
+    const existing = body.settings
+      ? await this.prisma.organization.findUniqueOrThrow({
+          where: { id: auth.organization.id },
+          select: { settings: true },
+        })
+      : null;
+
     const organization = await this.prisma.organization.update({
       where: { id: auth.organization.id },
       data: {
         ...(body.name ? { name: body.name } : {}),
-        ...(body.settings ? { settings: body.settings as never } : {}),
+        ...(body.settings
+          ? {
+              settings: {
+                ...((existing?.settings as Record<string, unknown> | null) ?? {}),
+                ...body.settings,
+              } as never,
+            }
+          : {}),
       },
     });
 
@@ -69,6 +118,149 @@ export class OrganizationsController {
       plan: organization.plan,
       settings: organization.settings,
     };
+  }
+
+  /* ------------------------------------------------- export and deletion */
+
+  /**
+   * Everything the workspace holds, as one JSON document. The right to a copy
+   * of your data should not depend on asking someone for it.
+   */
+  @Get('organizations/export')
+  @RequireRole('owner')
+  @Header('Content-Type', 'application/json; charset=utf-8')
+  async exportData(@Auth() auth: AuthContext, @Res({ passthrough: true }) res: Response) {
+    const organizationId = auth.organization.id;
+    const where = { organizationId };
+
+    const [organization, campaigns, leads, notes, tasks, drafts, conversations, suppressions] =
+      await Promise.all([
+        this.prisma.organization.findUniqueOrThrow({ where: { id: organizationId } }),
+        this.prisma.campaign.findMany({ where }),
+        this.prisma.lead.findMany({
+          where,
+          include: { contacts: true, socialProfiles: true, evidence: true, scores: true },
+        }),
+        this.prisma.note.findMany({ where }),
+        this.prisma.task.findMany({ where }),
+        this.prisma.messageDraft.findMany({ where }),
+        this.prisma.conversation.findMany({ where, include: { messages: true } }),
+        this.prisma.suppression.findMany({ where }),
+      ]);
+
+    await this.audit.record({
+      organizationId,
+      userId: auth.user.id,
+      action: 'export_workspace',
+      resource: 'organization',
+      resourceId: organizationId,
+      metadata: { leads: leads.length, conversations: conversations.length },
+    });
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="leadforge-${organization.slug}-${new Date().toISOString().slice(0, 10)}.json"`,
+    );
+
+    return {
+      exportedAt: new Date().toISOString(),
+      workspace: {
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        plan: organization.plan,
+        settings: organization.settings,
+        createdAt: organization.createdAt,
+      },
+      campaigns,
+      leads,
+      notes,
+      tasks,
+      messageDrafts: drafts,
+      conversations,
+      suppressions,
+    };
+  }
+
+  /**
+   * Deletes the workspace and everything in it. Irreversible, so it asks for
+   * the workspace name typed out, and refuses while a paid subscription is
+   * live — otherwise the customer would keep being charged for nothing.
+   */
+  @Delete('organizations/current')
+  @RequireRole('owner')
+  @HttpCode(204)
+  async deleteWorkspace(
+    @Auth() auth: AuthContext,
+    @Body(zodBody(deleteOrganizationSchema)) body: z.infer<typeof deleteOrganizationSchema>,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const organizationId = auth.organization.id;
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      include: { subscription: true },
+    });
+
+    if (body.confirmName.trim() !== organization.name) {
+      throw new AppError(
+        'VALIDATION_FAILED',
+        'Type the workspace name exactly as shown to confirm.',
+        { retryable: false },
+      );
+    }
+
+    const subscription = organization.subscription;
+    if (
+      subscription?.externalSubscriptionId &&
+      ['active', 'trialing', 'past_due'].includes(subscription.status) &&
+      organization.plan !== 'free'
+    ) {
+      throw AppError.conflict(
+        'Cancel the paid subscription in Settings → Billing before deleting this workspace, so you are not charged again.',
+      );
+    }
+
+    const members = await this.prisma.membership.findMany({
+      where: { organizationId },
+      select: { userId: true },
+    });
+
+    // A large workspace cascades through a lot of rows; the default five
+    // seconds is not a safe ceiling for that.
+    await this.prisma.$transaction(
+      (tx) =>
+        this.deleteEverything(
+          tx,
+          organizationId,
+          members.map((member) => member.userId),
+        ),
+      { timeout: 120_000, maxWait: 20_000 },
+    );
+
+    logger('organizations').info({ organizationId, members: members.length }, 'workspace deleted');
+    res.clearCookie(SESSION_COOKIE, { path: '/' });
+  }
+
+  private async deleteEverything(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    memberUserIds: string[],
+  ): Promise<void> {
+    // Not cascaded by the schema: these rows carry no foreign key.
+    await tx.mergeCandidate.deleteMany({ where: { organizationId } });
+    await tx.organization.delete({ where: { id: organizationId } });
+
+    // An account that belonged only to this workspace has nowhere left to
+    // sign in to. Remove it rather than leave a login that leads nowhere.
+    await tx.user.deleteMany({
+      where: { id: { in: memberUserIds }, memberships: { none: {} } },
+    });
+
+    // Anyone who was signed in to it is signed out of it.
+    await tx.session.updateMany({
+      where: { activeOrganizationId: organizationId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   /* ------------------------------------------------------------ members */

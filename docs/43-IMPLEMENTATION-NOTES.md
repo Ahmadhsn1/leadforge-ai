@@ -106,9 +106,6 @@ mailbox poller or an inbound-parse provider.
 
 ## Deliberately not built
 
-- **Payment flow.** Plans and quotas are enforced (`PLAN_QUOTAS`, `UsageCounter`,
-  checks in `AiService`, `OutreachService` and `CampaignsService`), but changing
-  a plan is an operator action. `docs/37` places billing in Phase 8.
 - **Merge review UI.** Candidates are recorded; resolving them needs a query.
 - **OpenTelemetry export.** Structured logging with full correlation IDs is in
   place and `OTEL_EXPORTER_OTLP_ENDPOINT` is wired through config, but no
@@ -282,3 +279,90 @@ Only running the real thing against real providers surfaced them.
 
 The AI half of the pipeline was verified against real OpenRouter calls, not
 mocks. `scripts/live-e2e.mjs` reruns the whole thing on demand.
+
+---
+
+## Third pass: making it sellable
+
+The first two passes built a pipeline that works. This one closed the gap
+between "works" and "someone can find it, pay for it, and be held to what they
+paid for".
+
+### Billing (Paddle)
+
+`apps/api/src/billing`. Paddle is the merchant of record: it owns the checkout,
+the card, tax and invoices, which matters for a seller in a country Stripe does
+not onboard.
+
+- **Only a verified webhook raises a plan.** `POST /billing/plan` creates a
+  Paddle transaction server-side with the workspace id attached and hands the
+  browser a transaction id to open. The browser reporting success changes
+  nothing; `Organization.plan` moves when `subscription.*` arrives with a valid
+  `Paddle-Signature`. A forged success page buys nothing.
+- **The workspace id is attached server-side.** Anything the browser passes to
+  a checkout can be edited to name a different workspace.
+- **Events are idempotent and order-safe.** `WebhookDelivery` keys on Paddle's
+  event id, and `Subscription.lastEventAt` rejects an event older than the
+  newest one applied. Paddle does not guarantee ordering.
+- **`past_due` keeps access.** Paddle is still retrying the card. Cutting a
+  customer off mid-campaign over a declined renewal loses people who would have
+  paid a day later; Paddle cancels if the retries run out, and that event does
+  return the workspace to free.
+- **A failed apply answers 500**, unlike the channel webhooks, which always
+  answer 200. Paddle retries, and a dropped subscription change means someone
+  paying for a plan they do not have.
+- **All-or-nothing configuration.** `capabilities().billing` needs the API key,
+  webhook secret, client token and all three price ids. A checkout that takes
+  money but cannot hear the webhook is worse than no checkout.
+
+The decisions (signature, price → plan, status → entitlement) are pure functions
+in `billing.logic.ts` with their own unit tests. **Not yet exercised against
+Paddle itself** — the E2E suite signs its own events with a throwaway secret.
+Run a sandbox checkout before taking real money.
+
+### Plan features are enforced
+
+`PLAN_QUOTAS[plan].features` was display-only: every plan got everything.
+`@RequireFeature()` on the auth guard now gates the conversation copilot,
+custom sequences and the analytics export, and `SequenceService.start` skips
+automated follow-ups on plans without them. The guard reads the plan from the
+database on each request, so an upgrade or a lapsed subscription applies on the
+next call.
+
+`white_label` was listed on the Agency plan and implemented nowhere. It has
+been removed rather than left as a promise.
+
+### Defects fixed
+
+1. **Team invites could not be accepted.** The email linked to `/invite`; there
+   was no such page and no endpoint behind it.
+2. **The email-verification link went to a 404.**
+3. **No API rate limiting.** `RATE_LIMIT_*` was parsed from the environment and
+   read by nothing. Login had no brute-force protection.
+4. **CSV import ignored the lead quota entirely** — an unlimited way round any
+   plan.
+5. **A campaign run could exceed the lead quota.** The check ran once at start,
+   so a run asking for 500 leads with 3 remaining delivered 500.
+6. **Audit and limiter addresses were caller-controlled.** `clientIp` read the
+   leftmost `X-Forwarded-For` entry directly instead of the proxy-resolved
+   `req.ip`.
+7. **The health screen said campaigns "cannot discover new businesses"**
+   without a Google key, which stopped being true when OpenStreetMap landed.
+
+### Public site
+
+`/` was a redirect to the login form. It is now a landing page, with `/pricing`
+and `/legal/{terms,privacy}`. Plan cards render from `PLAN_QUOTAS` — the same
+record the API enforces — so a number on the pricing page cannot drift from what
+a workspace actually gets. The legal pages are a starting draft, not legal
+advice; have them reviewed before launch.
+
+### Running the suites on a slow machine
+
+Prisma gives a new database connection five seconds to open. On a heavily
+loaded development laptop that is not always enough, and the failure does not
+look like slowness: it surfaces as `P1001 Can't reach database server`, or as a
+500 from whichever request happened to need a fresh pooled connection. Append
+`connect_timeout=60` to `DATABASE_URL` when running the E2E suite or
+`prisma migrate deploy` on such a machine, and raise Vitest's hook timeout
+(`--hookTimeout=400000`).

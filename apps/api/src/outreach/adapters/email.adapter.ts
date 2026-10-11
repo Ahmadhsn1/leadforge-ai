@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppError, normalizeEmail, Channel } from '@leadforge/shared';
-import { capabilities, env } from '@leadforge/config';
+import { capabilities } from '@leadforge/config';
 import { MailService } from '@/common/mail.service';
 import type {
   ChannelAdapter,
@@ -46,8 +46,14 @@ export class EmailAdapter implements ChannelAdapter {
     return { valid: true, normalized: email };
   }
 
+  isConfiguredFor(organizationId: string): Promise<boolean> {
+    return this.mail.isConfiguredFor(organizationId);
+  }
+
   async send(request: SendRequest): Promise<SendResult> {
-    if (!this.isConfigured()) throw AppError.providerNotConfigured('SMTP email');
+    if (!(await this.isConfiguredFor(request.organizationId))) {
+      throw AppError.providerNotConfigured('Email sending');
+    }
 
     const subject = request.subject?.trim();
     if (!subject) {
@@ -60,11 +66,24 @@ export class EmailAdapter implements ChannelAdapter {
       );
     }
 
-    const result = await this.mail.send({
+    // Every commercial email carries a way out, both as a line a person can
+    // read and as the headers mail clients turn into an "Unsubscribe" button
+    // (RFC 8058). Gmail and Yahoo require the latter of bulk senders.
+    const unsubscribe = request.unsubscribeUrl;
+    const result = await this.mail.sendForOrganization(request.organizationId, {
       to: request.recipient,
       subject,
-      text: request.body,
-      replyTo: env().SMTP_FROM,
+      text: unsubscribe
+        ? `${request.body}\n\n--\nNot relevant? Opt out of further emails: ${unsubscribe}`
+        : request.body,
+      // Unset means "reply to the sender", which the mail service fills in.
+      replyTo: request.replyTo,
+      headers: unsubscribe
+        ? {
+            'List-Unsubscribe': `<${request.unsubscribePostUrl ?? unsubscribe}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+          }
+        : undefined,
     });
 
     if (result.accepted.length === 0) {

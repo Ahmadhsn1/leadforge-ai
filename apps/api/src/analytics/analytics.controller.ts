@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { z } from 'zod';
 import { analyticsRangeSchema } from '@leadforge/shared';
 import { zodQuery } from '@/common/http';
-import { OrgId } from '@/auth/auth.guard';
+import { OrgId, RequireFeature } from '@/auth/auth.guard';
 import { AnalyticsService } from './analytics.service';
 
 const usageRangeSchema = z.object({
@@ -45,6 +45,7 @@ export class AnalyticsController {
 
   /** Funnel and rates as CSV, for reporting outside the product. */
   @Get('export')
+  @RequireFeature('analytics')
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async export(
     @OrgId() organizationId: string,

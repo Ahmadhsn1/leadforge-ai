@@ -11,6 +11,9 @@ import {
   SuppressionScope,
 } from '@leadforge/shared';
 import { currentPeriod } from '@leadforge/database';
+import { capabilities, env } from '@leadforge/config';
+import { createUnsubscribeToken, readUnsubscribeToken } from './unsubscribe-token';
+import { buildReplyAddress } from './reply-address';
 import { PrismaService } from '@/common/prisma.service';
 import { QueueService } from '@/jobs/queue.service';
 import { SuppressionService } from './suppression.service';
@@ -123,6 +126,8 @@ export class OutreachService {
     });
 
     assertTransition(draft.status as DraftStatus, 'approved');
+
+    await this.assertSenderVerified(options.userId);
 
     const body = options.body?.trim() || draft.body;
     const subject = options.subject?.trim() ?? draft.subject;
@@ -527,7 +532,10 @@ export class OutreachService {
     }
 
     const adapter = this.adapterFor(draft.channel);
-    if (!adapter.isConfigured()) {
+    const configured = adapter.isConfiguredFor
+      ? await adapter.isConfiguredFor(organizationId)
+      : adapter.isConfigured();
+    if (!configured) {
       throw AppError.providerNotConfigured(`The ${draft.channel} channel`);
     }
 
@@ -543,13 +551,22 @@ export class OutreachService {
     }
 
     try {
+      const inboundDomain = capabilities().inboundEmail ? env().INBOUND_EMAIL_DOMAIN : undefined;
+
       const result = await adapter.send({
+        organizationId,
+        // With reply capture on, the reply comes back to us addressed in a way
+        // that says which message it answers.
+        replyTo: inboundDomain
+          ? buildReplyAddress(draftId, inboundDomain, env().AUTH_SECRET)
+          : undefined,
         recipient,
         body: draft.body,
         subject: draft.subject,
         idempotencyKey: draft.sendIdempotencyKey ?? draftId,
         leadId: draft.leadId,
         draftId,
+        ...this.unsubscribeLinks(organizationId, draft.leadId),
       });
 
       const sentAt = new Date();
@@ -640,6 +657,54 @@ export class OutreachService {
     }
   }
 
+  /**
+   * The opt-out links for one lead: a page a person confirms on, and the
+   * endpoint a mail client's own "Unsubscribe" button posts to. The page asks
+   * for a click because link scanners follow every URL in an email, and a GET
+   * that unsubscribed would opt people out before they had read it.
+   */
+  unsubscribeLinks(
+    organizationId: string,
+    leadId: string,
+  ): { unsubscribeUrl: string; unsubscribePostUrl: string } {
+    const token = createUnsubscribeToken(organizationId, leadId, env().AUTH_SECRET);
+    const base = env().APP_URL.replace(/\/+$/, '');
+    return {
+      unsubscribeUrl: `${base}/unsubscribe?token=${token}`,
+      unsubscribePostUrl: `${base}/api/outreach/unsubscribe?token=${token}`,
+    };
+  }
+
+  /**
+   * Honours an opt-out link. Public and unauthenticated by design: the person
+   * clicking it is a recipient, not a user.
+   *
+   * Idempotent, and deliberately uninformative — an invalid token gets the same
+   * answer as a valid one, so the endpoint cannot be used to probe for leads.
+   */
+  async unsubscribe(token: string | undefined): Promise<void> {
+    const claim = readUnsubscribeToken(token, env().AUTH_SECRET);
+    if (!claim) return;
+
+    const lead = await this.prisma.lead.findFirst({
+      where: { id: claim.leadId, organizationId: claim.organizationId },
+      select: { id: true, email: true, country: true },
+    });
+    if (!lead) return;
+
+    const reason = 'Opted out using the unsubscribe link.';
+    // The address they were written to, so the opt-out survives the lead being
+    // re-imported; plus the lead itself, which also stops the other channels.
+    if (lead.email) {
+      await this.suppression
+        .add(claim.organizationId, 'email', lead.email, { reason })
+        .catch(() => undefined);
+    }
+    await this.suppression.add(claim.organizationId, 'lead', lead.id, { reason });
+
+    logger('outreach').info({ leadId: lead.id }, 'recipient opted out via unsubscribe link');
+  }
+
   /** Opens or reuses the conversation an outbound message belongs to. */
   async ensureConversation(
     organizationId: string,
@@ -681,6 +746,28 @@ export class OutreachService {
     ]);
 
     return conversation.id;
+  }
+
+  /**
+   * Outreach is only released by someone whose own address is confirmed: an
+   * account on a mistyped or borrowed address should not be able to message
+   * strangers. Skipped where the deployment cannot deliver the confirmation
+   * email at all, since nobody could ever pass.
+   */
+  private async assertSenderVerified(userId: string): Promise<void> {
+    if (!capabilities().email) return;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { emailVerified: true },
+    });
+    if (user && !user.emailVerified) {
+      throw new AppError(
+        'FORBIDDEN',
+        'Confirm your email address before sending outreach. Use the link we emailed you, or request a new one from your profile settings.',
+        { retryable: false, details: { reason: 'email_unverified' } },
+      );
+    }
   }
 
   /* --------------------------------------------------------------- quotas */

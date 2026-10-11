@@ -1189,7 +1189,13 @@ model Subscription {
   currentPeriodStart DateTime @default(now())
   currentPeriodEnd   DateTime
   cancelAtPeriodEnd  Boolean  @default(false)
+  /// "paddle" once a paid subscription exists; null for a plan nobody pays for.
+  provider           String?
   externalCustomerId String?
+  externalSubscriptionId String? @unique
+  /// `occurred_at` of the newest provider event applied. Webhooks can arrive
+  /// out of order, and an older one must not overwrite a newer state.
+  lastEventAt        DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
