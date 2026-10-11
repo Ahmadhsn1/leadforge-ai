@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Billing** through Paddle: checkout, plan changes, the customer portal, and
+  a signed webhook that is the only thing able to raise a workspace's plan.
+- **Plan feature enforcement** — the conversation copilot, custom sequences and
+  the analytics export are limited to the plans that list them.
+- **Public site**: landing page, `/pricing`, terms, privacy, `sitemap.xml` and
+  `robots.txt`. Plan cards render from the same record the API enforces.
+- **Per-workspace mail accounts** — each workspace connects its own SMTP
+  server; the password is sealed with AES-256-GCM and never returned.
+- **Unsubscribe** — a signed opt-out link in every outreach email, RFC 8058
+  one-click headers, and an `/unsubscribe` page.
+- **Email reply capture** via a signed Reply-To address and
+  `POST /webhooks/inbound-email`.
+- **Reply notifications** by email, honouring the notification preferences.
+- **Workspace export and deletion**, owner only.
+- **Usage warning banner** at 80% and 100% of a monthly allowance.
+- **API rate limiting**, Redis-backed, with a tighter budget on credential
+  endpoints.
+- **Team invite acceptance** and the email-verification landing page.
+
+### Fixed
+
+- Team invite and email-verification links led to pages that did not exist.
+- CSV import ignored the monthly lead quota, and a campaign run could exceed it.
+- Saving workspace settings erased the notification preferences.
+- The audit log and limiter trusted a caller-supplied `X-Forwarded-For`.
+- A WhatsApp reply could be filed under another workspace's lead with the same
+  number.
+- The health screen reported discovery as unavailable without a Google key.
+
+### Changed
+
+- Outreach approval requires a confirmed email address where confirmation mail
+  can be delivered.
+- The free plan now lists message generation and outreach, which it always
+  had in practice; its 50-message allowance is what bounds it.
+
+### Removed
+
+- `white_label` from the Agency plan. It was listed and never implemented.
+
 ## [1.0.0] — 2026-09-08
 
 First complete release. The whole pipeline runs end to end against real

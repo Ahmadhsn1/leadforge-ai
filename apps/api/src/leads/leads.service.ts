@@ -2,12 +2,14 @@ import { Injectable } from '@nestjs/common';
 import {
   AppError,
   JOB_NAMES,
+  PLAN_QUOTAS,
   paginate,
   skipTake,
   temperatureForScore,
   Channel,
   ImportLeadsInput,
   ListLeadsQuery,
+  Plan,
   UpdateLeadInput,
 } from '@leadforge/shared';
 import { currentPeriod } from '@leadforge/database';
@@ -456,8 +458,13 @@ export class LeadsService {
     });
     if (!campaign) throw AppError.notFound('Campaign', input.campaignId);
 
+    // Imported leads draw on the same monthly allowance as discovered ones;
+    // otherwise a CSV is an unlimited way round the plan.
+    const remaining = await this.remainingLeadQuota(organizationId);
+
     let created = 0;
     let duplicates = 0;
+    let skipped = 0;
 
     for (const row of input.rows) {
       const normalized = this.normalization.normalize(
@@ -481,6 +488,12 @@ export class LeadsService {
         await this.normalization.mergeInto(existing.leadId, normalized);
         await this.linkToCampaign(organizationId, existing.leadId, input.campaignId);
         duplicates += 1;
+        continue;
+      }
+
+      // Merges above cost nothing; only a genuinely new lead uses allowance.
+      if (created >= remaining) {
+        skipped += 1;
         continue;
       }
 
@@ -535,11 +548,36 @@ export class LeadsService {
     await this.incrementLeadCounter(organizationId, created);
 
     logger('leads').info(
-      { campaignId: input.campaignId, created, duplicates },
+      { campaignId: input.campaignId, created, duplicates, skipped },
       'CSV import completed',
     );
 
-    return { created, duplicates };
+    return { created, duplicates, skipped };
+  }
+
+  /** Leads the plan still allows this period. Throws when there are none. */
+  private async remainingLeadQuota(organizationId: string): Promise<number> {
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+      select: { plan: true },
+    });
+    const quota = PLAN_QUOTAS[organization.plan as Plan];
+
+    const counter = await this.prisma.usageCounter.findUnique({
+      where: {
+        organizationId_metric_period: { organizationId, metric: 'leads', period: currentPeriod() },
+      },
+    });
+
+    const remaining = quota.monthlyLeads - (counter?.value ?? 0);
+    if (remaining <= 0) {
+      throw new AppError(
+        'QUOTA_EXCEEDED',
+        `This workspace has used all ${quota.monthlyLeads.toLocaleString('en-GB')} leads included in the ${quota.label} plan this month.`,
+        { retryable: false },
+      );
+    }
+    return remaining;
   }
 
   async addNote(organizationId: string, leadId: string, body: string, userId: string) {

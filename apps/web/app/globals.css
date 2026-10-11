@@ -223,6 +223,12 @@
       radial-gradient(100% 120% at 100% 0%, hsl(var(--primary) / 0.1) 0%, transparent 55%);
   }
 
+  /* Reading copy on the public pages. The app's own scale is compact for
+     dense tables; prose a visitor reads on a phone needs a full 16px. */
+  .mk-body {
+    @apply text-[1rem] leading-7;
+  }
+
   /* Skeleton shimmer — used instead of spinners for content loads. */
   .skeleton {
     @apply relative overflow-hidden rounded-sm bg-muted;
@@ -315,11 +321,14 @@
   /* Sticky headers get a hairline only once content scrolls beneath them. */
   .scroll-shadow {
     background:
-      linear-gradient(hsl(var(--background)) 30%, hsl(var(--background) / 0)) top / 100% 12px no-repeat,
-      linear-gradient(hsl(var(--background) / 0), hsl(var(--background)) 70%) bottom / 100% 12px no-repeat,
-      radial-gradient(farthest-side at 50% 0, hsl(var(--shadow-color) / 0.12), transparent) top / 100% 6px no-repeat,
-      radial-gradient(farthest-side at 50% 100%, hsl(var(--shadow-color) / 0.12), transparent) bottom / 100% 6px
-        no-repeat;
+      linear-gradient(hsl(var(--background)) 30%, hsl(var(--background) / 0)) top / 100% 12px
+        no-repeat,
+      linear-gradient(hsl(var(--background) / 0), hsl(var(--background)) 70%) bottom / 100% 12px
+        no-repeat,
+      radial-gradient(farthest-side at 50% 0, hsl(var(--shadow-color) / 0.12), transparent) top /
+        100% 6px no-repeat,
+      radial-gradient(farthest-side at 50% 100%, hsl(var(--shadow-color) / 0.12), transparent)
+        bottom / 100% 6px no-repeat;
     background-attachment: local, local, scroll, scroll;
   }
 }

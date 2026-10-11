@@ -11,6 +11,10 @@ export interface Capabilities {
   readonly whatsapp: boolean;
   readonly instagram: boolean;
   readonly email: boolean;
+  /** Replies to outreach email are captured into conversations. */
+  readonly inboundEmail: boolean;
+  /** Self-serve checkout and subscription management. */
+  readonly billing: boolean;
   readonly objectStorage: boolean;
   readonly telemetryExport: boolean;
 }
@@ -23,6 +27,17 @@ export function capabilities(): Capabilities {
     whatsapp: Boolean(e.META_ACCESS_TOKEN && e.WHATSAPP_PHONE_NUMBER_ID),
     instagram: Boolean(e.META_ACCESS_TOKEN && e.INSTAGRAM_BUSINESS_ACCOUNT_ID),
     email: Boolean(e.SMTP_HOST && e.SMTP_FROM),
+    inboundEmail: Boolean(e.INBOUND_EMAIL_DOMAIN && e.INBOUND_EMAIL_SECRET),
+    // All-or-nothing: a checkout that takes money but cannot hear the webhook
+    // would charge someone and leave them on the free plan.
+    billing: Boolean(
+      e.PADDLE_API_KEY &&
+      e.PADDLE_WEBHOOK_SECRET &&
+      e.PADDLE_CLIENT_TOKEN &&
+      e.PADDLE_PRICE_STARTER &&
+      e.PADDLE_PRICE_GROWTH &&
+      e.PADDLE_PRICE_AGENCY,
+    ),
     objectStorage: Boolean(e.S3_ENDPOINT && e.S3_BUCKET),
     telemetryExport: Boolean(e.OTEL_EXPORTER_OTLP_ENDPOINT),
   };

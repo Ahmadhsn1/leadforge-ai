@@ -3,6 +3,7 @@ import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { AppError } from '@leadforge/shared';
 import { capabilities, env } from '@leadforge/config';
+import { WorkspaceSmtpService } from '@/integrations/workspace-smtp.service';
 import { logger } from './logger';
 
 export interface SendMailInput {
@@ -10,6 +11,7 @@ export interface SendMailInput {
   readonly subject: string;
   readonly text: string;
   readonly replyTo?: string;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export interface SendMailResult {
@@ -29,6 +31,69 @@ export interface SendMailResult {
 @Injectable()
 export class MailService {
   private transporter: Transporter | null = null;
+
+  constructor(private readonly workspaceSmtp: WorkspaceSmtpService) {}
+
+  /**
+   * Whether outreach email can be sent for this workspace — through its own
+   * mail account, or failing that the deployment's.
+   */
+  async isConfiguredFor(organizationId: string): Promise<boolean> {
+    return (await this.workspaceSmtp.has(organizationId)) || this.isConfigured();
+  }
+
+  /**
+   * Sends outreach on a workspace's behalf.
+   *
+   * The workspace's own account is used when it has connected one, so the
+   * message comes from the customer's address and rides on their reputation.
+   * The deployment account is the fallback for single-tenant installs.
+   */
+  async sendForOrganization(
+    organizationId: string,
+    input: SendMailInput,
+  ): Promise<SendMailResult & { from: string }> {
+    const workspace = await this.workspaceSmtp.load(organizationId);
+    if (!workspace) {
+      const result = await this.send(input);
+      return { ...result, from: env().SMTP_FROM ?? '' };
+    }
+
+    try {
+      const info = await workspace.transporter.sendMail({
+        from: workspace.from,
+        to: input.to,
+        subject: input.subject,
+        text: input.text,
+        replyTo: input.replyTo ?? workspace.fromAddress,
+        headers: input.headers ? { ...input.headers } : undefined,
+      });
+      return {
+        messageId: info.messageId,
+        accepted: (info.accepted ?? []).map(String),
+        from: workspace.fromAddress,
+      };
+    } catch (error) {
+      throw new AppError('PROVIDER_ERROR', 'Your mail server rejected the message.', {
+        cause: error,
+        retryable: true,
+      });
+    }
+  }
+
+  /**
+   * A notification to a member of the product (a reply arrived, a run
+   * finished). Sent from the deployment account, never a workspace's: it is
+   * the product speaking, not the customer. Never throws.
+   */
+  async sendNotification(to: string, subject: string, text: string): Promise<void> {
+    if (!this.isConfigured()) return;
+    try {
+      await this.send({ to, subject, text });
+    } catch (error) {
+      logger('mail').warn({ err: error, subject }, 'notification email failed');
+    }
+  }
 
   private getTransporter(): Transporter | null {
     if (!capabilities().email) return null;
@@ -64,6 +129,7 @@ export class MailService {
         subject: input.subject,
         text: input.text,
         replyTo: input.replyTo,
+        headers: input.headers ? { ...input.headers } : undefined,
       });
       return { messageId: info.messageId, accepted: (info.accepted ?? []).map(String) };
     } catch (error) {

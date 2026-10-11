@@ -112,17 +112,29 @@ export default function ImportLeadsPage() {
 
       // Batched so a large file does not become one enormous request.
       let imported = 0;
+      let overQuota = 0;
       for (let i = 0; i < payload.length; i += 500) {
         const batch = payload.slice(i, i + 500);
-        const result = await api.post<{ created: number; duplicates: number }>('/leads/import', {
-          campaignId,
-          rows: batch,
-        });
+        const result = await api.post<{ created: number; duplicates: number; skipped: number }>(
+          '/leads/import',
+          { campaignId, rows: batch },
+        );
         imported += result.created;
+        if (result.skipped > 0) {
+          // The plan's allowance ran out part-way; later batches would only be refused.
+          overQuota = result.skipped + Math.max(0, payload.length - (i + batch.length));
+          break;
+        }
       }
-      toast.success(`Imported ${formatCount(imported)} leads`, {
-        description: 'They will be verified, enriched and scored automatically.',
-      });
+      if (overQuota > 0) {
+        toast.warning(`Imported ${formatCount(imported)} leads`, {
+          description: `${formatCount(overQuota)} rows were left out because this month's lead allowance is used up. Upgrade the plan to import the rest.`,
+        });
+      } else {
+        toast.success(`Imported ${formatCount(imported)} leads`, {
+          description: 'They will be verified, enriched and scored automatically.',
+        });
+      }
       router.push(`/dashboard/leads?campaignId=${campaignId}`);
     } catch (error) {
       toast.error('Import failed', {

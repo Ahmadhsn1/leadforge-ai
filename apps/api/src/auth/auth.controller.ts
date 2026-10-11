@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Res } from
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
+  acceptInviteSchema,
   confirmPasswordResetSchema,
   loginSchema,
   requestPasswordResetSchema,
@@ -16,6 +17,7 @@ import { clientIp, zodBody } from '@/common/http';
 import { logger } from '@/common/logger';
 import { AuditService } from '@/organizations/audit.service';
 import { MailService } from '@/common/mail.service';
+import { WorkspaceSmtpService } from '@/integrations/workspace-smtp.service';
 import { AuthService } from './auth.service';
 import { Auth, Public, Req } from './auth.guard';
 import { SESSION_COOKIE, AuthContext, AuthenticatedRequest } from './auth.types';
@@ -33,6 +35,7 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly audit: AuditService,
     private readonly mail: MailService,
+    private readonly workspaceSmtp: WorkspaceSmtpService,
   ) {}
 
   @Public()
@@ -243,10 +246,54 @@ export class AuthController {
     return { accepted: true };
   }
 
+  /* -------------------------------------------------------------- invites */
+
+  @Public()
+  @Get('invites/:token')
+  previewInvite(@Param('token') token: string) {
+    return this.authService.previewInvite(token);
+  }
+
+  @Public()
+  @Post('invites/accept')
+  @HttpCode(200)
+  async acceptInvite(
+    @Body(zodBody(acceptInviteSchema)) body: z.infer<typeof acceptInviteSchema>,
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Public, but the guard still resolves a session when one is present.
+    const { userId, organizationId } = await this.authService.acceptInvite(body, req.auth?.user);
+
+    // A fresh session scoped to the workspace they just joined.
+    if (req.auth) await this.authService.revokeSession(req.auth.sessionId);
+    const session = await this.authService.createSession(
+      userId,
+      { userAgent: req.header('user-agent'), ipAddress: clientIp(req) },
+      organizationId,
+    );
+    this.setSessionCookie(res, session.token, session.expiresAt);
+
+    await this.audit.record({
+      organizationId,
+      userId,
+      action: 'accept_invite',
+      resource: 'membership',
+      resourceId: userId,
+      ipAddress: clientIp(req),
+      userAgent: req.header('user-agent'),
+      requestId: req.requestId,
+    });
+
+    return this.meResponse(session.context);
+  }
+
   /* -------------------------------------------------------------- helpers */
 
-  private meResponse(auth: AuthContext) {
+  private async meResponse(auth: AuthContext) {
     const caps = capabilities();
+    // Email counts as available if the workspace connected its own account.
+    const ownEmail = caps.email ? true : await this.workspaceSmtp.has(auth.organization.id);
     return {
       user: auth.user,
       organization: auth.organization,
@@ -256,7 +303,8 @@ export class AuthController {
         googlePlaces: caps.googlePlaces,
         whatsapp: caps.whatsapp,
         instagram: caps.instagram,
-        email: caps.email,
+        email: ownEmail,
+        billing: caps.billing,
       },
     };
   }

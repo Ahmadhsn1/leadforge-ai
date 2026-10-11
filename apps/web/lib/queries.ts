@@ -12,6 +12,7 @@ import { api, type ApiError } from './api-client';
 import type {
   AiUsageView,
   AnalyticsOverviewView,
+  BillingView,
   CampaignAnalyticsView,
   CampaignRun,
   CampaignSummary,
@@ -53,6 +54,7 @@ export const qk = {
   analytics: (params?: unknown) => ['analytics', 'overview', params ?? {}] as const,
   aiUsage: (params?: unknown) => ['analytics', 'ai-usage', params ?? {}] as const,
   usage: ['usage'] as const,
+  billing: ['billing'] as const,
   members: ['members'] as const,
   invites: ['invites'] as const,
   integrations: ['integrations'] as const,
@@ -532,6 +534,14 @@ export function useUsage(options?: Options<UsageView>) {
   return useQuery<UsageView, ApiError>({
     queryKey: qk.usage,
     queryFn: () => api.get<UsageView>('/usage'),
+    ...options,
+  });
+}
+
+export function useBilling(options?: Options<BillingView>) {
+  return useQuery<BillingView, ApiError>({
+    queryKey: qk.billing,
+    queryFn: () => api.get<BillingView>('/billing'),
     ...options,
   });
 }

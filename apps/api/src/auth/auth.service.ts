@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { AppError, OrgRole } from '@leadforge/shared';
+import { AppError, PLAN_QUOTAS, passwordSchema, OrgRole, Plan } from '@leadforge/shared';
 import { newToken, sha256, safeEqual } from '@leadforge/shared/server';
 import { env } from '@leadforge/config';
 import { PrismaService } from '@/common/prisma.service';
@@ -351,6 +351,130 @@ export class AuthService {
   async verifyEmail(token: string): Promise<void> {
     const userId = await this.consumeToken(token, 'emailVerification');
     await this.prisma.user.update({ where: { id: userId }, data: { emailVerified: true } });
+  }
+
+  /* ---------------------------------------------------------------- invites */
+
+  private async findOpenInvite(token: string) {
+    const invite = await this.prisma.invite.findUnique({
+      where: { tokenHash: sha256(token) },
+      include: { organization: { select: { id: true, name: true, plan: true } } },
+    });
+    if (!invite || invite.acceptedAt || invite.expiresAt.getTime() < Date.now()) {
+      throw AppError.badRequest('That invitation is invalid or has expired.');
+    }
+    return invite;
+  }
+
+  /** What the invite screen needs to render before anything is committed. */
+  async previewInvite(token: string) {
+    const invite = await this.findOpenInvite(token);
+    const user = await this.prisma.user.findUnique({ where: { email: invite.email } });
+    return {
+      email: invite.email,
+      role: invite.role,
+      organizationName: invite.organization.name,
+      expiresAt: invite.expiresAt.toISOString(),
+      // Only disclosed to someone holding the emailed token for this address.
+      hasAccount: Boolean(user),
+    };
+  }
+
+  /**
+   * Accepts an invite and returns who joined which workspace.
+   *
+   * The token proves control of the invited mailbox, so a new account created
+   * here starts with its email verified. An existing account must still prove
+   * itself — by being the signed-in caller or by its password — otherwise a
+   * forwarded invite email would add a workspace to someone else's account.
+   */
+  async acceptInvite(
+    input: { token: string; name?: string; password?: string },
+    currentUser?: { id: string; email: string },
+  ): Promise<{ userId: string; organizationId: string; created: boolean }> {
+    const invite = await this.findOpenInvite(input.token);
+    const existing = await this.prisma.user.findUnique({ where: { email: invite.email } });
+
+    let passwordHash: string | null = null;
+
+    if (existing) {
+      const signedInAsInvitee = currentUser?.id === existing.id;
+      if (!signedInAsInvitee) {
+        if (!input.password) {
+          throw AppError.unauthenticated(
+            'Sign in as the invited address, or enter its password, to accept this invitation.',
+          );
+        }
+        const valid = await this.verifyPassword(existing.passwordHash, input.password);
+        if (!valid) throw AppError.unauthenticated('That password is not correct.');
+      }
+    } else {
+      if (!input.name || !input.password) {
+        throw new AppError(
+          'VALIDATION_FAILED',
+          'Choose a name and password to create your account.',
+        );
+      }
+      const password = passwordSchema.safeParse(input.password);
+      if (!password.success) {
+        throw new AppError(
+          'VALIDATION_FAILED',
+          password.error.issues[0]?.message ?? 'Choose a stronger password.',
+        );
+      }
+      passwordHash = await this.hashPassword(password.data);
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Seats can fill between the invite being sent and being accepted.
+      const quota = PLAN_QUOTAS[invite.organization.plan as Plan];
+      const alreadyMember = existing
+        ? await tx.membership.findUnique({
+            where: {
+              userId_organizationId: { userId: existing.id, organizationId: invite.organizationId },
+            },
+          })
+        : null;
+
+      if (!alreadyMember) {
+        const members = await tx.membership.count({
+          where: { organizationId: invite.organizationId },
+        });
+        if (members >= quota.maxMembers) {
+          throw new AppError(
+            'QUOTA_EXCEEDED',
+            `This workspace has reached the ${quota.maxMembers} members its ${quota.label} plan allows. Ask its owner to upgrade.`,
+            { retryable: false },
+          );
+        }
+      }
+
+      const user =
+        existing ??
+        (await tx.user.create({
+          data: {
+            email: invite.email,
+            name: input.name as string,
+            passwordHash: passwordHash as string,
+            emailVerified: true,
+          },
+        }));
+
+      if (!alreadyMember) {
+        await tx.membership.create({
+          data: { userId: user.id, organizationId: invite.organizationId, role: invite.role },
+        });
+      }
+      await tx.invite.update({ where: { id: invite.id }, data: { acceptedAt: new Date() } });
+
+      return { userId: user.id, organizationId: invite.organizationId, created: !existing };
+    });
+
+    logger('auth').info(
+      { userId: result.userId, organizationId: result.organizationId, created: result.created },
+      'invite accepted',
+    );
+    return result;
   }
 
   async findUserByEmail(email: string) {
