@@ -26,7 +26,10 @@ import { zodBody, zodQuery } from '@/common/http';
 import { Auth, OrgId, RequireRole } from '@/auth/auth.guard';
 import { AuditService } from '@/organizations/audit.service';
 import { LeadsService } from './leads.service';
+import { MergeReviewService } from './merge-review.service';
 import type { AuthContext } from '@/auth/auth.types';
+
+const resolveMergeSchema = z.object({ action: z.enum(['merge', 'distinct']) });
 
 /** UTF-8 byte order mark, without which Excel misreads the file. */
 const BOM = '﻿';
@@ -36,6 +39,7 @@ export class LeadsController {
   constructor(
     private readonly leads: LeadsService,
     private readonly audit: AuditService,
+    private readonly mergeReview: MergeReviewService,
   ) {}
 
   @Get()
@@ -59,6 +63,39 @@ export class LeadsController {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     // Excel needs a UTF-8 BOM to read the file correctly.
     return `${BOM}${csv}`;
+  }
+
+  /* ------------------------------------------------------ duplicate review */
+
+  // Declared ahead of `:id` so "merge-candidates" is not read as a lead id.
+  @Get('merge-candidates')
+  mergeCandidates(@OrgId() organizationId: string) {
+    return this.mergeReview.list(organizationId);
+  }
+
+  @Post('merge-candidates/:candidateId/resolve')
+  @RequireRole('member')
+  @HttpCode(200)
+  async resolveMergeCandidate(
+    @Auth() auth: AuthContext,
+    @Param('candidateId') candidateId: string,
+    @Body(zodBody(resolveMergeSchema)) body: z.infer<typeof resolveMergeSchema>,
+  ) {
+    const result = await this.mergeReview.resolve(
+      auth.organization.id,
+      candidateId,
+      body.action,
+      auth.user.id,
+    );
+    await this.audit.record({
+      organizationId: auth.organization.id,
+      userId: auth.user.id,
+      action: body.action === 'merge' ? 'merge_leads' : 'keep_leads_separate',
+      resource: 'lead',
+      resourceId: result.survivorId ?? candidateId,
+      metadata: { candidateId },
+    });
+    return result;
   }
 
   @Post('import')

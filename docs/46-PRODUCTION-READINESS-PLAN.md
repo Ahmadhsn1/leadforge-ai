@@ -98,7 +98,7 @@ page, privacy-friendly analytics on the public pages, a support address.
 | Notification preferences sent nothing   | `NotificationService` emails verified members on a reply, honouring preferences    | Typecheck; needs SMTP to observe                                                     |
 | WhatsApp replies could cross workspaces | A reply goes to the workspace that messaged that number most recently              | Typecheck                                                                            |
 | WhatsApp cold outreach needs templates  | **Not built.** Needs a Meta-approved template to build against                     | —                                                                                    |
-| Transactional email is plain text only  | **Not built.** Cosmetic; plain text delivers well                                  | —                                                                                    |
+| Transactional email was plain text only | HTML version of verification, reset and invite email, with the text version kept   | Unit: content, escaping                                                              |
 
 Reply capture needs an inbound-parse provider and a domain before it does
 anything: set `INBOUND_EMAIL_DOMAIN` and `INBOUND_EMAIL_SECRET`. Postmark's JSON
@@ -108,14 +108,14 @@ Conversations rather than in the sender's own mailbox.
 
 ## Phase 5 — Earn trust with data ✅ (code) / ⏳ (one screen)
 
-| Gap                                         | Fix                                                                                                         | Validation                                                                    |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Every customer shared one mailbox           | Each workspace connects its own SMTP account; password sealed with AES-256-GCM                              | Unit: round-trip, tamper, cross-workspace. E2E: validation, no back-door edit |
-| No workspace deletion or data export        | Owner-only JSON export; delete on typed name, refused while a subscription is live                          | E2E: export scope, delete cascade, orphaned account removed                   |
-| Saving workspace settings wiped preferences | Settings are merged, and the form loads what is stored                                                      | E2E                                                                           |
-| Unverified emails could send outreach       | Approval requires a confirmed address, where confirmation email can be delivered                            | Typecheck; needs SMTP to observe                                              |
-| No warning before an allowance ran out      | Banner at 80% and at 100%                                                                                   | Typecheck; browser check pending                                              |
-| Duplicate review has no screen              | **Not built.** Merging two existing leads moves drafts, conversations and evidence; it needs its own design | —                                                                             |
+| Gap                                         | Fix                                                                                | Validation                                                                    |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Every customer shared one mailbox           | Each workspace connects its own SMTP account; password sealed with AES-256-GCM     | Unit: round-trip, tamper, cross-workspace. E2E: validation, no back-door edit |
+| No workspace deletion or data export        | Owner-only JSON export; delete on typed name, refused while a subscription is live | E2E: export scope, delete cascade, orphaned account removed                   |
+| Saving workspace settings wiped preferences | Settings are merged, and the form loads what is stored                             | E2E                                                                           |
+| Unverified emails could send outreach       | Approval requires a confirmed address, where confirmation email can be delivered   | Typecheck; needs SMTP to observe                                              |
+| No warning before an allowance ran out      | Banner at 80% and at 100%                                                          | Typecheck; browser check pending                                              |
+| Duplicate review had no screen              | `/dashboard/leads/duplicates`: side-by-side comparison, merge or keep separate     | E2E: merge moves notes and contacts, fills gaps, no double rows               |
 
 The mail-server host a customer types is resolved and refused if it points
 inside the deployment's own network, and only submission ports are accepted.

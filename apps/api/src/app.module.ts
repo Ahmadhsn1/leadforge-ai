@@ -51,6 +51,7 @@ import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignsController } from './campaigns/campaigns.controller';
 import { LeadsService } from './leads/leads.service';
 import { LeadsController } from './leads/leads.controller';
+import { MergeReviewService } from './leads/merge-review.service';
 
 import { AnalyticsService } from './analytics/analytics.service';
 import { AnalyticsController } from './analytics/analytics.controller';
@@ -131,6 +132,7 @@ import { BillingController } from './billing/billing.controller';
     ConversationsService,
     CampaignsService,
     LeadsService,
+    MergeReviewService,
     AnalyticsService,
     BillingService,
 
