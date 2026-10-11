@@ -1,22 +1,12 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
 import { env } from '@leadforge/config';
-import { AppModule } from './app.module';
-import { configureHttpApp } from './http-app';
+import { createHttpApp } from './http-app';
 import { rootLogger } from './common/logger';
 
 /** API bootstrap. The HTTP middleware lives in `http-app.ts`. */
 async function bootstrap(): Promise<void> {
   const config = env();
-
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    // Pino owns logging; Nest's own logger only carries bootstrap messages.
-    logger: ['error', 'warn', 'log'],
-    bodyParser: false,
-  });
-
-  configureHttpApp(app);
+  const app = await createHttpApp();
 
   await app.listen(config.API_PORT, '0.0.0.0');
 

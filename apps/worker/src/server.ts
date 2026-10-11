@@ -1,9 +1,7 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import type { NestExpressApplication } from '@nestjs/platform-express';
 import { QUEUE_NAMES } from '@leadforge/shared';
 import { env } from '@leadforge/config';
-import { AppModule, configureHttpApp, rootLogger } from '@leadforge/api';
+import { createHttpApp, rootLogger } from '@leadforge/api';
 import { contextFrom } from './context';
 import { WorkerRunner } from './runner';
 import { registerProcessors, scheduleFollowUpSweep } from './processors/register';
@@ -29,11 +27,7 @@ async function bootstrap(): Promise<void> {
   const config = env();
   const port = Number(process.env.PORT) || config.API_PORT;
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: ['error', 'warn', 'log'],
-    bodyParser: false,
-  });
-  configureHttpApp(app);
+  const app = await createHttpApp();
 
   const ctx = contextFrom(app);
   const runner = new WorkerRunner(ctx);

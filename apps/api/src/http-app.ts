@@ -1,22 +1,37 @@
+import { NestFactory } from '@nestjs/core';
+import type { INestApplication } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { env } from '@leadforge/config';
+import { AppModule } from './app.module';
 
 /**
- * Everything an HTTP instance of the application needs beyond its module
- * graph: security headers, body parsing, cookies and CORS.
+ * Creates the application as an HTTP server, ready to `listen`.
+ *
+ * Everything an HTTP instance needs beyond its module graph is applied here:
+ * security headers, body parsing, cookies and CORS.
  *
  * Shared by the API entry point and the single-process entry point in
  * `apps/worker`, so the two cannot drift into serving different middleware.
  *
  * Order matters: the raw-body capture must run before JSON parsing so webhook
- * HMAC verification sees the exact bytes the provider signed. The application
- * must be created with `bodyParser: false`.
+ * HMAC verification sees the exact bytes the provider signed, which is why the
+ * application is created with Nest's own body parser off.
  */
-export function configureHttpApp(app: NestExpressApplication): void {
+export async function createHttpApp(): Promise<INestApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // Pino owns logging; Nest's own logger only carries bootstrap messages.
+    logger: ['error', 'warn', 'log'],
+    bodyParser: false,
+  });
+  configureHttpApp(app);
+  return app;
+}
+
+function configureHttpApp(app: NestExpressApplication): void {
   const config = env();
 
   app.set('trust proxy', 1);
