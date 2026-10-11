@@ -12,6 +12,64 @@ import type {
   WebhookVerification,
 } from './channel-adapter';
 
+/** Meta's limit on a template body parameter. */
+const TEMPLATE_PARAM_MAX = 1_024;
+
+/**
+ * Makes a message safe to pass as a template parameter. Meta rejects
+ * parameters containing newlines, tabs, or runs of more than four spaces, so
+ * line breaks become sentence spacing rather than a failed send.
+ */
+export function toTemplateParameter(body: string): string {
+  const flattened = body
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/ {2,}/g, ' ')
+    .trim();
+  return flattened.length > TEMPLATE_PARAM_MAX
+    ? `${flattened.slice(0, TEMPLATE_PARAM_MAX - 1).trimEnd()}…`
+    : flattened;
+}
+
+/**
+ * The request body for one outbound message.
+ *
+ * Inside a 24-hour conversation window Meta accepts free-form text. Outside
+ * it — which is every first message to a prospect — only an approved template
+ * is accepted. When a template is configured, the first touch is sent through
+ * it, with the reviewed message as its single body variable (`{{1}}`). With no
+ * template configured the message goes out as text and Meta's refusal is
+ * surfaced to the user as it is.
+ */
+export function buildWhatsAppPayload(
+  request: Pick<SendRequest, 'recipient' | 'body' | 'conversationWindowOpen'>,
+  template: { name?: string; language: string },
+): Record<string, unknown> {
+  const envelope = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: request.recipient,
+  };
+
+  if (template.name && !request.conversationWindowOpen) {
+    return {
+      ...envelope,
+      type: 'template',
+      template: {
+        name: template.name,
+        language: { code: template.language },
+        components: [
+          {
+            type: 'body',
+            parameters: [{ type: 'text', text: toTemplateParameter(request.body) }],
+          },
+        ],
+      },
+    };
+  }
+
+  return { ...envelope, type: 'text', text: { preview_url: false, body: request.body } };
+}
+
 /**
  * WhatsApp Business Platform adapter (docs/23).
  *
@@ -62,13 +120,12 @@ export class WhatsAppAdapter implements ChannelAdapter {
           Authorization: `Bearer ${config.META_ACCESS_TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          recipient_type: 'individual',
-          to: request.recipient,
-          type: 'text',
-          text: { preview_url: false, body: request.body },
-        }),
+        body: JSON.stringify(
+          buildWhatsAppPayload(request, {
+            name: config.WHATSAPP_TEMPLATE_NAME,
+            language: config.WHATSAPP_TEMPLATE_LANGUAGE,
+          }),
+        ),
         signal: AbortSignal.timeout(20_000),
       });
     } catch (error) {

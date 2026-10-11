@@ -15,6 +15,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { ZodError, ZodSchema } from 'zod';
 import { AppError, isAppError, ApiErrorBody } from '@leadforge/shared';
 import { logger, newRequestId, withLogContext, enrichLogContext } from './logger';
+import { reportError } from './error-report';
 
 /**
  * Attaches a request ID and opens the logging context for the whole request,
@@ -85,8 +86,17 @@ export class AppExceptionFilter implements ExceptionFilter {
           ? { message: exception.message, stack: exception.stack }
           : exception,
     };
-    if (logLevel === 'error') log.error(detail, 'unhandled exception');
-    else log.warn(detail, 'request error');
+    if (logLevel === 'error') {
+      log.error(detail, 'unhandled exception');
+      // A server error is one nobody chose; tell whoever is on call.
+      reportError({
+        source: 'http',
+        // The route pattern, not the URL: ids in a path are not for a chat channel.
+        operation: `${req.method} ${(req.route as { path?: string } | undefined)?.path ?? 'unknown route'}`,
+        message: exception instanceof Error ? exception.message : 'Unknown error',
+        requestId,
+      });
+    } else log.warn(detail, 'request error');
 
     if (!res.headersSent) res.status(status).json(body);
   }

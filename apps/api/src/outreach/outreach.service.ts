@@ -553,8 +553,24 @@ export class OutreachService {
     try {
       const inboundDomain = capabilities().inboundEmail ? env().INBOUND_EMAIL_DOMAIN : undefined;
 
+      // Has this lead written to us on this channel in the last day? Only then
+      // does WhatsApp accept a free-form message.
+      const recentInbound =
+        draft.channel === 'whatsapp'
+          ? await this.prisma.message.findFirst({
+              where: {
+                organizationId,
+                direction: 'inbound',
+                receivedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+                conversation: { leadId: draft.leadId, channel: 'whatsapp' },
+              },
+              select: { id: true },
+            })
+          : null;
+
       const result = await adapter.send({
         organizationId,
+        conversationWindowOpen: Boolean(recentInbound),
         // With reply capture on, the reply comes back to us addressed in a way
         // that says which message it answers.
         replyTo: inboundDomain

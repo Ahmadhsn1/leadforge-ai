@@ -8,7 +8,7 @@ import {
   QueueKey,
 } from '@leadforge/shared';
 import { env } from '@leadforge/config';
-import { logger, withLogContext } from '@leadforge/api';
+import { logger, reportError, withLogContext } from '@leadforge/api';
 import type { WorkerContext } from './context';
 
 /**
@@ -213,6 +213,12 @@ export class WorkerRunner {
           }
 
           log.error({ name: job.name, err: error }, 'job failed permanently (dead-letter)');
+          reportError({
+            source: queueName,
+            operation: job.name,
+            message,
+            requestId: payload.requestId,
+          });
 
           // A permanent failure is recorded, not rethrown: retrying it would
           // burn attempts on work that cannot succeed.

@@ -7,6 +7,7 @@
  */
 export { AppModule } from './app.module';
 export { createHttpApp } from './http-app';
+export { reportError } from './common/error-report';
 
 export { PrismaService } from './common/prisma.service';
 export { MailService } from './common/mail.service';

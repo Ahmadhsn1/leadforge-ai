@@ -110,6 +110,13 @@ export const envSchema = z.object({
   META_ACCESS_TOKEN: optionalString,
   META_WEBHOOK_VERIFY_TOKEN: optionalString,
   WHATSAPP_PHONE_NUMBER_ID: optionalString,
+  /**
+   * An approved WhatsApp template whose body is a single variable, `{{1}}`.
+   * First messages to a prospect are sent through it; Meta refuses free-form
+   * text outside an open conversation.
+   */
+  WHATSAPP_TEMPLATE_NAME: optionalString,
+  WHATSAPP_TEMPLATE_LANGUAGE: z.string().default('en'),
   INSTAGRAM_BUSINESS_ACCOUNT_ID: optionalString,
   META_GRAPH_VERSION: z.string().default('v21.0'),
 
@@ -153,6 +160,11 @@ export const envSchema = z.object({
   FETCH_MAX_REDIRECTS: int(3),
   ALLOW_PRIVATE_NETWORK_FETCH: bool(false),
 
+  /**
+   * A chat webhook (Slack-compatible) that unexpected server errors and
+   * permanently failed jobs are posted to. Optional.
+   */
+  ERROR_WEBHOOK_URL: optionalString,
   OTEL_EXPORTER_OTLP_ENDPOINT: optionalString,
   OTEL_SERVICE_NAME: z.string().default('leadforge'),
 
