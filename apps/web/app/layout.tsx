@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Providers } from './providers';
+import { siteUrl } from '@/lib/site-url';
 import './globals.css';
 
 const inter = Inter({
@@ -25,7 +26,7 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   // Absolute URLs are required for Open Graph. Without a base, Next emits
   // relative image paths and every link preview renders without an image.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'),
+  metadataBase: new URL(siteUrl()),
   title: {
     default: `LeadForge AI — ${TAGLINE}`,
     template: '%s · LeadForge AI',
