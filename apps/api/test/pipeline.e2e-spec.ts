@@ -848,6 +848,136 @@ describe('LeadForge pipeline (e2e)', () => {
     expect(await prisma.organization.count({ where: { id: organizationId } })).toBe(1);
   });
 
+  /* ------------------------------------------------------ duplicate review */
+
+  it('merges a reviewed duplicate into the lead that was already there', async () => {
+    const make = (name: string, extra: object = {}) =>
+      prisma.lead.create({
+        data: {
+          organizationId,
+          canonicalName: name,
+          nameKey: name.toLowerCase(),
+          source: 'csv_import',
+          country: 'GB',
+          ...extra,
+        },
+      });
+
+    const existing = await make('Merge Review Bakery', { phone: '+441615550401' });
+    const incoming = await make('Merge Review Bakery Co', {
+      website: 'https://mergereview.test',
+      tags: ['walk-in'],
+    });
+    const unrelated = await make('Merge Review Butcher');
+
+    // The same phone on both, and one only the newer lead has.
+    for (const leadId of [existing.id, incoming.id]) {
+      await prisma.contact.create({
+        data: {
+          organizationId,
+          leadId,
+          kind: 'phone',
+          value: '+441615550401',
+          valueKey: '+441615550401',
+          source: 'e2e',
+        },
+      });
+    }
+    await prisma.contact.create({
+      data: {
+        organizationId,
+        leadId: incoming.id,
+        kind: 'email',
+        value: 'hello@mergereview.test',
+        valueKey: 'hello@mergereview.test',
+        source: 'e2e',
+      },
+    });
+    await prisma.note.create({
+      data: { organizationId, leadId: incoming.id, body: 'Spoke to the owner on Tuesday.' },
+    });
+
+    const pair = await prisma.mergeCandidate.create({
+      data: {
+        organizationId,
+        leadId: incoming.id,
+        candidateLeadId: existing.id,
+        score: 0.74,
+        decision: 'review',
+        reasons: ['Similar name', 'Same city'],
+      },
+    });
+    const other = await prisma.mergeCandidate.create({
+      data: {
+        organizationId,
+        leadId: unrelated.id,
+        candidateLeadId: existing.id,
+        score: 0.61,
+        decision: 'review',
+        reasons: ['Similar name'],
+      },
+    });
+
+    const list = await request(app.getHttpServer())
+      .get('/leads/merge-candidates')
+      .set(auth())
+      .expect(200);
+    const listed = list.body.find((c: { id: string }) => c.id === pair.id);
+    expect(listed.existing.name).toBe('Merge Review Bakery');
+    expect(listed.incoming.name).toBe('Merge Review Bakery Co');
+    expect(listed.reasons).toContain('Same city');
+
+    // "Not the same business" records the decision and changes neither lead.
+    await request(app.getHttpServer())
+      .post(`/leads/merge-candidates/${other.id}/resolve`)
+      .set(auth())
+      .send({ action: 'distinct' })
+      .expect(200);
+    expect(
+      (await prisma.lead.findUniqueOrThrow({ where: { id: unrelated.id } })).mergedIntoId,
+    ).toBe(null);
+
+    const merged = await request(app.getHttpServer())
+      .post(`/leads/merge-candidates/${pair.id}/resolve`)
+      .set(auth())
+      .send({ action: 'merge' })
+      .expect(200);
+    expect(merged.body.survivorId).toBe(existing.id);
+
+    const survivor = await prisma.lead.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: { contacts: true, notes: true },
+    });
+    // Gaps filled, existing values kept, nothing duplicated.
+    expect(survivor.phone).toBe('+441615550401');
+    expect(survivor.website).toBe('https://mergereview.test');
+    expect(survivor.tags).toContain('walk-in');
+    expect(survivor.notes.map((n) => n.body)).toContain('Spoke to the owner on Tuesday.');
+    expect(survivor.contacts.filter((c) => c.kind === 'phone')).toHaveLength(1);
+    expect(survivor.contacts.filter((c) => c.kind === 'email')).toHaveLength(1);
+
+    // The duplicate is kept as provenance but no longer appears as a lead.
+    const gone = await prisma.lead.findUniqueOrThrow({ where: { id: incoming.id } });
+    expect(gone.mergedIntoId).toBe(existing.id);
+    const search = await request(app.getHttpServer())
+      .get('/leads?search=Merge%20Review%20Bakery')
+      .set(auth())
+      .expect(200);
+    expect(search.body.items.map((l: { id: string }) => l.id)).not.toContain(incoming.id);
+
+    // Resolved pairs leave the queue, and cannot be resolved twice.
+    const after = await request(app.getHttpServer())
+      .get('/leads/merge-candidates')
+      .set(auth())
+      .expect(200);
+    expect(after.body.map((c: { id: string }) => c.id)).not.toContain(pair.id);
+    await request(app.getHttpServer())
+      .post(`/leads/merge-candidates/${pair.id}/resolve`)
+      .set(auth())
+      .send({ action: 'merge' })
+      .expect(409);
+  });
+
   /* -------------------------------------------------------------- billing */
 
   const subscriptionId = `sub_e2e_${SUFFIX}`;

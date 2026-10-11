@@ -4,12 +4,15 @@ import type { Transporter } from 'nodemailer';
 import { AppError } from '@leadforge/shared';
 import { capabilities, env } from '@leadforge/config';
 import { WorkspaceSmtpService } from '@/integrations/workspace-smtp.service';
+import { renderActionEmail } from './email-template';
 import { logger } from './logger';
 
 export interface SendMailInput {
   readonly to: string;
   readonly subject: string;
   readonly text: string;
+  /** Optional HTML alternative. The text version is always sent alongside it. */
+  readonly html?: string;
   readonly replyTo?: string;
   readonly headers?: Readonly<Record<string, string>>;
 }
@@ -128,6 +131,7 @@ export class MailService {
         to: input.to,
         subject: input.subject,
         text: input.text,
+        html: input.html,
         replyTo: input.replyTo,
         headers: input.headers ? { ...input.headers } : undefined,
       });
@@ -178,6 +182,17 @@ Confirm this address to finish setting up your LeadForge workspace:
 ${link}
 
 This link expires in 24 hours. If you did not create a LeadForge account, ignore this email.`,
+        html: renderActionEmail({
+          heading: 'Confirm your email address',
+          paragraphs: [
+            `Hi ${name},`,
+            'Confirm this address to finish setting up your LeadForge workspace.',
+          ],
+          actionLabel: 'Confirm email',
+          actionUrl: link,
+          footnote:
+            'This link expires in 24 hours. If you did not create a LeadForge account, ignore this email.',
+        }),
       },
       'email verification',
       link,
@@ -197,6 +212,14 @@ Use this link to choose a new password:
 ${link}
 
 It expires in one hour and can be used once. If you did not request this, you can ignore it — your password has not changed.`,
+        html: renderActionEmail({
+          heading: 'Choose a new password',
+          paragraphs: [`Hi ${name},`, 'Use the button below to choose a new password.'],
+          actionLabel: 'Reset password',
+          actionUrl: link,
+          footnote:
+            'It expires in one hour and can be used once. If you did not request this, you can ignore it — your password has not changed.',
+        }),
       },
       'password reset',
       link,
@@ -221,6 +244,15 @@ Accept the invitation:
 ${link}
 
 This link expires in 7 days.`,
+        html: renderActionEmail({
+          heading: `Join ${organizationName} on LeadForge`,
+          paragraphs: [
+            `${inviterName} has invited you to join the ${organizationName} workspace on LeadForge.`,
+          ],
+          actionLabel: 'Accept invitation',
+          actionUrl: link,
+          footnote: 'This link expires in 7 days.',
+        }),
       },
       'workspace invite',
       link,

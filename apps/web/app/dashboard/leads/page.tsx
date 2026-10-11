@@ -3,7 +3,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Building2, Download, Send, Sparkles, Tag, Upload, X } from 'lucide-react';
+import { Building2, Download, GitMerge, Send, Sparkles, Tag, Upload, X } from 'lucide-react';
 import { PageHeader, PageShell } from '@/components/layout/page-header';
 import { LeadTable, LeadCardList, type SortState } from '@/components/leads/lead-table';
 import { LeadFilters } from '@/components/leads/lead-filters';
@@ -78,6 +78,12 @@ export default function LeadsPage() {
         description="Every prospect the pipeline has found, ranked by how worth contacting they are."
         actions={
           <>
+            <Button variant="secondary" size="sm" asChild>
+              <Link href="/dashboard/leads/duplicates">
+                <GitMerge aria-hidden="true" />
+                Duplicates
+              </Link>
+            </Button>
             <Button variant="secondary" size="sm" asChild>
               <Link href="/dashboard/leads/import">
                 <Upload aria-hidden="true" />
