@@ -6,6 +6,7 @@
  * It boots AppModule as a standalone Nest context and resolves what it needs.
  */
 export { AppModule } from './app.module';
+export { configureHttpApp } from './http-app';
 
 export { PrismaService } from './common/prisma.service';
 export { MailService } from './common/mail.service';

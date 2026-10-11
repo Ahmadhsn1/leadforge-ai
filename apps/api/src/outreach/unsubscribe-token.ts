@@ -26,10 +26,12 @@ export function createUnsubscribeToken(
 }
 
 export function readUnsubscribeToken(
-  token: string | undefined,
+  token: unknown,
   secret: string,
 ): { organizationId: string; leadId: string } | null {
-  if (!token || token.length > 400) return null;
+  // Checked at runtime, not just in the signature: a repeated query parameter
+  // arrives as an array, whatever the caller's types claim.
+  if (typeof token !== 'string' || token.length === 0 || token.length > 400) return null;
 
   const [payload, signature, ...rest] = token.split('.');
   if (!payload || !signature || rest.length > 0) return null;

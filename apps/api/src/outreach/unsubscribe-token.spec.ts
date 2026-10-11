@@ -29,7 +29,18 @@ describe('unsubscribe tokens', () => {
   });
 
   it('rejects malformed input without throwing', () => {
-    for (const bad of [undefined, '', 'nodot', 'a.b.c', '.', 'x.', '.y', 'x'.repeat(500)]) {
+    // A repeated query parameter reaches the handler as an array.
+    for (const bad of [
+      undefined,
+      '',
+      'nodot',
+      'a.b.c',
+      '.',
+      'x.',
+      '.y',
+      'x'.repeat(500),
+      ['a.b'],
+    ]) {
       expect(readUnsubscribeToken(bad, SECRET)).toBeNull();
     }
   });

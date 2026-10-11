@@ -208,11 +208,14 @@ export class OutreachController {
   @Post('unsubscribe')
   @HttpCode(200)
   async unsubscribe(
-    @Query('token') queryToken: string | undefined,
+    @Query('token') queryToken: unknown,
     @Body() body: { token?: unknown } | undefined,
   ): Promise<{ ok: true }> {
-    const bodyToken = typeof body?.token === 'string' ? body.token : undefined;
-    await this.outreach.unsubscribe(queryToken ?? bodyToken);
+    // Either may be an array if the parameter was repeated; only a string is a token.
+    const token = [queryToken, body?.token].find(
+      (value): value is string => typeof value === 'string',
+    );
+    await this.outreach.unsubscribe(token);
     return { ok: true };
   }
 
